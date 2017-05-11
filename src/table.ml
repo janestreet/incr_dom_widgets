@@ -1,5 +1,6 @@
 open! Core_kernel
 open! Import
+open Vdom
 
 include Table_intf
 
@@ -22,7 +23,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   module Column = struct
     type 'a t =
-      { header: Vdom.Node.t
+      { header: Node.t
       ; group: string option
       ; sort_by: ('a -> Sort_key.t) option
       } [@@deriving fields]
@@ -100,23 +101,29 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   end
 
   module Html_id = struct
-    let table         t = sprintf !"table-%{Table_id}"      t
-    let tbody         t = sprintf !"%{table}-body"          t
-    let thead         t = sprintf !"%{table}-header"        t
-    let column_group  t = sprintf !"%{table}-column-group"  t
-    let column_header t = sprintf !"%{table}-column-header" t
+    type t = string [@@deriving compare, sexp]
+
+    (* This module avoids using [sprintf] for performance reasons *)
+
+    let table         table_id = "table-" ^ Table_id.to_string table_id
+    let tbody         table_id = table table_id ^ "-body"
+    let thead         table_id = table table_id ^ "-header"
+    let column_group  table_id = table table_id ^ "-column-group"
+    let column_header table_id = table table_id ^ "-column-header"
 
     let column_header_cell table_id column_id =
-      sprintf !"%{table}-header-cell-%{sexp:Column_id.t}"
-        table_id column_id
+      table table_id ^ "-header-cell-" ^ Column_id.to_string column_id
 
     let row table_id row_id =
-      sprintf !"%{table}-row-%{sexp:Row_id.t}" table_id row_id
+      table table_id ^ "-row-" ^ Row_id.to_string row_id
 
-    let cell table_id row_id col_id =
-      sprintf !"%s-col-%{sexp:Column_id.t}" (row table_id row_id) col_id
+    let cell_of_parts row_html_id column_id_str =
+      row_html_id ^ "-col-" ^ column_id_str
 
-    let spacer key = sprintf "spacer-%s" key
+    let cell table_id row_id column_id =
+      cell_of_parts (row table_id row_id) (Column_id.to_string column_id)
+
+    let spacer key = "spacer-" ^ key
   end
 
   module Row_view = Partial_render_list.Make(Key)
@@ -136,6 +143,10 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
              ; height_cache: Row_view.Height_cache.t
              ; visibility_info: Visibility_info.t option
              ; col_group_row_height: int
+             ; tbody_html_id : Html_id.t
+             ; thead_html_id : Html_id.t
+             ; column_group_html_id : Html_id.t
+             ; column_header_html_id : Html_id.t
              }
     [@@deriving fields, compare, sexp_of]
 
@@ -144,7 +155,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       let id =
         match id with
         | Some id -> id
-        | None -> Table_id.create ()
+        | None    -> Table_id.create ()
       in
       { id
       ; float_header
@@ -157,6 +168,10 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; height_cache = Row_view.Height_cache.empty ~height_guess
       ; visibility_info = None
       ; col_group_row_height = 0
+      ; tbody_html_id = Html_id.tbody id
+      ; thead_html_id = Html_id.thead id
+      ; column_group_html_id = Html_id.column_group id
+      ; column_header_html_id = Html_id.column_header id
       }
 
     let sort_dir t = Option.map t.sort_criteria ~f:Sort_criteria.dir
@@ -189,6 +204,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; row_view: 'a Row_view.t
       ; scroll_region : Scroll_region.t option
       ; has_col_groups : bool
+      ; floating_col : Column_id.t option
       } [@@deriving fields]
 
     let create m ~rows ~(columns : (Column_id.t * _ Column.t) list Incr.t) =
@@ -221,23 +237,32 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         Option.map visibility_info ~f:(fun {Visibility_info.tbody_rect; view_rect; _} ->
           {Partial_render_list.Measurements.list_rect = tbody_rect; view_rect})
       in
+      let floating_col =
+        let%map float_first_col = m >>| Model.float_first_col
+        and columns = columns
+        in
+        if Float_type.is_floating float_first_col
+        then (Option.map (List.hd columns) ~f:fst)
+        else None
+      in
       let height_cache = m >>| Model.height_cache in
+      let column_num_lookup =
+        let%map columns = columns in
+        Column_id.Map.of_alist_exn (List.mapi columns ~f:(fun i (col_id, _) -> col_id, i))
+      in
       let%map row_view = Row_view.create ~rows:sorted_rows ~height_cache ~measurements
       and rows = rows
       and sorted_rows = sorted_rows
       and columns = columns
+      and column_num_lookup = column_num_lookup
       and sort_column = sort_column
       and scroll_region = scroll_region
+      and floating_col = floating_col
       in
       let has_col_groups =
         List.exists columns ~f:(fun (_, col) -> Option.is_some col.group)
       in
-      let column_num_lookup =
-        Column_id.Map.of_alist_exn (List.mapi columns ~f:(fun i (col_id, _) -> col_id, i))
-      in
-      let columns =
-        Int.Map.of_alist_exn (List.mapi columns ~f:(fun i col -> i, col))
-      in
+      let columns = Int.Map.of_alist_exn (List.mapi columns ~f:(fun i col -> i, col)) in
       { rows
       ; sorted_rows
       ; columns
@@ -246,6 +271,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; row_view
       ; scroll_region
       ; has_col_groups
+      ; floating_col
       }
     ;;
   end
@@ -330,41 +356,57 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   (* Possible offset due to floating header *)
   let get_top_margin_offset (m : Model.t) =
     let get_float_elem_size () =
-      Option.map (Dom_html.getElementById_opt (Html_id.thead m.id))
+      Option.map (Dom_html.getElementById_opt m.thead_html_id)
         ~f:(fun el -> Js_misc.viewport_rect_of_element el |> Js_misc.Rect.height)
     in
     Float_type.compute_offset m.float_header ~get_float_elem_size
   ;;
 
   (* Possible offset due to floating first column *)
-  let get_left_margin_offset (m : Model.t) (d : _ Derived_model.t) =
-    let get_float_elem_size () =
-      let open Option.Let_syntax in
-      let%bind (_, (first_column_id, _)) = Map.min_elt d.columns in
-      let%map el =
-        Dom_html.getElementById_opt (Html_id.column_header_cell m.id first_column_id)
+  let get_left_margin_offset (m : Model.t) (d : _ Derived_model.t) ~is_floating_col =
+    if is_floating_col
+    then 0
+    else (
+      let get_float_elem_size () =
+        let open Option.Let_syntax in
+        let%bind (_, (first_column_id, _)) = Map.min_elt d.columns in
+        let%map el =
+          Dom_html.getElementById_opt (Html_id.column_header_cell m.id first_column_id)
+        in
+        Js_misc.viewport_rect_of_element el |> Js_misc.Rect.width
       in
-      Js_misc.viewport_rect_of_element el |> Js_misc.Rect.width
-    in
-    Float_type.compute_offset m.float_first_col ~get_float_elem_size
+      Float_type.compute_offset m.float_first_col ~get_float_elem_size
+    )
   ;;
 
   let call_row_scroll_function m d ~row_id ~f =
     Option.map (current_key m d ~row_id) ~f:(fun key -> f d.row_view ~key)
   ;;
 
-  let call_col_scroll_function (m : Model.t) ~column_id ~f =
-    Option.bind (Dom_html.getElementById_opt (Html_id.column_header_cell m.id column_id))
-      ~f:(fun elem ->
-        let rect = Js_misc.viewport_rect_of_element elem in
-        Option.map (Model.visibility_info m)
-          ~f:(fun { view_rect; _ } ->
-            f ~scroll_region_start:view_rect.left
-              ~scroll_region_end:view_rect.right
-              ~elem_start:(Js_misc.Rect.left rect)
-              ~elem_end:(Js_misc.Rect.right rect)
-          )
-      )
+  let is_floating_col (d : _ Derived_model.t) column_id =
+    [%compare.equal: Column_id.t option] d.floating_col (Some column_id)
+  ;;
+
+  let call_col_scroll_function (m : Model.t) ~column_id ~f ~is_floating_col =
+    let open Option.Let_syntax in
+    let%bind elem_start, elem_end =
+      let%bind header_cell =
+        Dom_html.getElementById_opt (Html_id.column_header_cell m.id column_id)
+      in
+      let cell_rect = Js_misc.viewport_rect_of_element header_cell in
+      if not is_floating_col
+      then (Some (Js_misc.Rect.left cell_rect, Js_misc.Rect.right cell_rect))
+      else begin
+        let%map visibility_info = m.visibility_info in
+        let left = Js_misc.Rect.left visibility_info.tbody_rect in
+        left, left + Js_misc.Rect.width cell_rect
+      end
+    in
+    let%map { view_rect; _ } = Model.visibility_info m in
+    f ~scroll_region_start:view_rect.left
+      ~scroll_region_end:view_rect.right
+      ~elem_start
+      ~elem_end
   ;;
 
   let scroll_row_into_scroll_region (m:Model.t) (d : _ Derived_model.t) row_id =
@@ -379,7 +421,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   ;;
 
   let scroll_col_into_scroll_region (m:Model.t) (d:_ Derived_model.t) column_id =
-    let left_margin_offset = get_left_margin_offset m d in
+    let is_floating_col = is_floating_col d column_id in
+    let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
     let f =
       Scroll.scroll_into_region
         ?in_:d.scroll_region
@@ -387,7 +430,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ~start_margin:(m.scroll_margin.left + left_margin_offset)
         ~end_margin:m.scroll_margin.right
     in
-    Option.value (call_col_scroll_function m ~column_id ~f) ~default:`Didn't_scroll
+    Option.value (call_col_scroll_function m ~column_id ~f ~is_floating_col)
+      ~default:`Didn't_scroll
   ;;
 
   let scroll_row_to_position ?keep_in_scroll_region (m : Model.t) (d: _ Derived_model.t)
@@ -408,6 +452,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   let scroll_col_to_position ?keep_in_scroll_region (m:Model.t) (d:_ Derived_model.t)
         column_id ~position =
+    let is_floating_col = is_floating_col d column_id in
     let f =
       match keep_in_scroll_region with
       | None    ->
@@ -419,7 +464,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
             ~scroll_region_start
             ~elem_start
       | Some () ->
-        let left_margin_offset = get_left_margin_offset m d in
+        let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
         Scroll.scroll_to_position_and_into_region
           ?in_:d.scroll_region
           Horizontal
@@ -427,7 +472,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           ~start_margin:(m.scroll_margin.left + left_margin_offset)
           ~end_margin:m.scroll_margin.right
     in
-    Option.value (call_col_scroll_function m ~column_id ~f) ~default:`Didn't_scroll
+    Option.value (call_col_scroll_function m ~column_id ~f ~is_floating_col)
+      ~default:`Didn't_scroll
   ;;
 
   let row_is_in_scroll_region (m : Model.t) (d : _ Derived_model.t) row_id =
@@ -441,13 +487,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   ;;
 
   let col_is_in_scroll_region (m : Model.t) (d : _ Derived_model.t) column_id =
-    let left_margin_offset = get_left_margin_offset m d in
+    let is_floating_col = is_floating_col d column_id in
+    let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
     let f =
       Scroll.is_in_region
         ~start_margin:(m.scroll_margin.left + left_margin_offset)
         ~end_margin:m.scroll_margin.right
     in
-    call_col_scroll_function m ~column_id ~f
+    call_col_scroll_function m ~column_id ~f ~is_floating_col
   ;;
 
   let get_row_position (m:Model.t) (d:_ Derived_model.t) row_id =
@@ -455,11 +502,12 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     Option.join (call_row_scroll_function m d ~row_id ~f)
   ;;
 
-  let get_col_position (m:Model.t) (_d: _ Derived_model.t) column_id =
+  let get_col_position (m:Model.t) (d: _ Derived_model.t) column_id =
+    let is_floating_col = is_floating_col d column_id in
     let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end:_ =
       Scroll.get_position ~scroll_region_start ~elem_start
     in
-    call_col_scroll_function m ~column_id ~f
+    call_col_scroll_function m ~column_id ~f ~is_floating_col
   ;;
 
   let scroll_focus_into_scroll_region (m:Model.t) d =
@@ -592,7 +640,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let update_visibility m d =
     let m = update_col_group_row_height m d in
     let m = update_heights m d in
-    match d.scroll_region, Dom_html.getElementById_opt (Html_id.tbody m.id) with
+    match d.scroll_region, Dom_html.getElementById_opt m.tbody_html_id with
     | None, _ | _, None ->
       (* If the app doesn't render either table but calls update_visibility, do nothing *)
       m
@@ -616,10 +664,11 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let px_of_int x =
     Int.to_string x ^ "px"
 
-  let spacer ~key height =
-    let open Vdom in
-    [Node.tr ~key [ Attr.id (Html_id.spacer key)
-                  ; Attr.style [ "height", px_of_int height ]] []]
+  let spacer ~key =
+    let id_attr = Attr.id (Html_id.spacer key) in
+    stage (fun height ->
+      [Node.tr ~key [ id_attr; Attr.style [ "height", px_of_int height ]] []]
+    )
 
   let sticky_pos side (pos:Float_type.t Incr.t) =
     let%map pos =
@@ -643,7 +692,6 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     z_index_style :: sticky_style
 
   let view_header ?override_on_click ~inject ~columns ~top_sticky_pos ~left_sticky_pos m =
-    let open Vdom in
     let get_sticky_attrs ~top_sticky_pos =
       let first_cell =
         sticky_style ~sticky_pos:(List.filter_opt [ left_sticky_pos; top_sticky_pos ])
@@ -753,13 +801,12 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       end
     in
     let group_attrs =
-      let%map id = m >>| Model.id in
-      [ Vdom.Attr.id (Html_id.column_group id)
-      ]
+      let%map column_group_html_id = m >>| Model.column_group_html_id in
+      [ Attr.id column_group_html_id ]
     in
     let header_attrs =
-      let%map id = m >>| Model.id in
-      [ Vdom.Attr.id (Html_id.column_header id) ]
+      let%map column_header_html_id = m >>| Model.column_header_html_id in
+      [ Attr.id column_header_html_id ]
     in
     let%map group_nodes  = group_nodes
     and     header_nodes = header_nodes
@@ -768,41 +815,69 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     in
     [ Option.map group_nodes ~f:(fun n -> Node.tr group_attrs n)
     ; Some (Node.tr header_attrs header_nodes)
-    ] |> List.filter_opt
+    ]
+    |> List.filter_opt
+
+  type row_html_ids =
+    { row_html_id : Html_id.t
+    ; cell_html_ids : Html_id.t list
+    }
 
   let view_rendered_rows ~table_id ~column_ids ~row_view ~render_row ~left_sticky_pos =
     let non_sticky_style = sticky_style ~sticky_pos:[] ~z_index:1 in
     let sticky_style =
       sticky_style ~sticky_pos:(Option.to_list left_sticky_pos) ~z_index:2
     in
-    Incr.Map.mapi' (row_view >>| Row_view.rows_to_render)
-      ~f:(fun ~key ~data:row ->
-        let row_html_id = Html_id.row table_id key.row_id in
+    let%bind column_ids = column_ids in
+    let column_id_strs = List.map column_ids ~f:Column_id.to_string in
+    (* Annotate each row with its html ids - we do this because the string conversions can
+       be expensive, and don't need to be re-done every time a row's incremental fires. *)
+    let rows_to_render_with_html_ids =
+      Incr.Map.unordered_fold (row_view >>| Row_view.rows_to_render)
+        ~init:Key.Map.empty
+        ~f:(fun ~key ~data:row acc ->
+          let row_html_id = Html_id.row table_id key.row_id in
+          let cell_html_ids =
+            List.map column_id_strs ~f:(Html_id.cell_of_parts row_html_id)
+          in
+          Map.add acc ~key ~data:({ row_html_id; cell_html_ids }, row)
+        )
+        ~f_inverse:(fun ~key ~data:_ acc -> Map.remove acc key)
+        ~f_inverse_compose_f:(fun ~key ~old_data:_ ~new_data:row acc ->
+          Map.change acc key ~f:(Option.map ~f:(Tuple2.map_snd ~f:(fun _ -> row)))
+        )
+    in
+    Incr.Map.mapi' rows_to_render_with_html_ids
+      ~f:(fun ~key ~data ->
+        let%bind { row_html_id; cell_html_ids } = data >>| fst in
         let%map { Row_node_spec. row_attrs; cells } =
-          render_row ~row_id:key.row_id ~row
-        and column_ids = column_ids
+          render_row ~row_id:key.row_id ~row:(data >>| snd)
         in
         let cells =
-          List.zip_exn column_ids cells
-          |> List.mapi ~f:(fun i (column_id, { Row_node_spec.Cell. attrs; node }) ->
+          List.zip_exn cell_html_ids cells
+          |> List.mapi ~f:(fun i (cell_html_id, { Row_node_spec.Cell. attrs; node }) ->
             let sticky_style = if i = 0 then sticky_style else non_sticky_style in
             let attrs =
               attrs.other_attrs
-              @ [ Vdom.Attr.style (attrs.style @ sticky_style)
-                ; Vdom.Attr.id (Html_id.cell table_id key.row_id column_id)
+              @ [ Attr.style (attrs.style @ sticky_style)
+                ; Attr.id cell_html_id
                 ]
             in
-            Vdom.Node.td attrs [ node ]
+            Node.td attrs [ node ]
           )
         in
         let row_attrs = Row_node_spec.Attrs.to_vdom_attrs row_attrs in
-        Vdom.Node.tr ~key:row_html_id (row_attrs @ [ Vdom.Attr.id row_html_id ]) cells
+        Node.tr ~key:row_html_id (row_attrs @ [ Attr.id row_html_id ]) cells
       )
 
   let view ?override_header_on_click m d ~render_row ~inject ~attrs =
-    let open Vdom in
+    let spacer_before = unstage (spacer ~key:"before") in
+    let spacer_after  = unstage (spacer ~key:"after")  in
     let columns = d >>| Derived_model.columns in
-    let column_ids = d >>| Fn.compose Map.keys Derived_model.column_num_lookup in
+    let column_ids =
+      let%map column_num_lookup = d >>| Derived_model.column_num_lookup in
+      Map.keys column_num_lookup
+    in
     let row_view = d >>| Derived_model.row_view in
     let%bind table_id = m >>| Model.id
     and      top_sticky_pos  = sticky_pos "top"  (m >>| Model.float_header)
@@ -823,9 +898,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           ]
           header
       ; Node.tbody [Attr.id (Html_id.tbody table_id)]
-          (spacer ~key:"before" before_height
+          (spacer_before before_height
            @ Map.data rendered_rows
-           @ spacer ~key:"after" after_height)
+           @ spacer_after after_height)
       ]
   ;;
 end

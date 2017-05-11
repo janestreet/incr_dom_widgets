@@ -41,6 +41,8 @@ module Float_type : sig
       element if applicable (height for floating header, width for floating first column).
   *)
   val compute_offset : t -> get_float_elem_size:(unit -> int option) -> int
+
+  val is_floating : t -> bool
 end
 
 module Scroll_result : sig

@@ -50,6 +50,8 @@ include Util
 module type Id = sig
   type t [@@deriving sexp]
   include Comparable.S with type t := t
+
+  val to_string : t -> string
 end
 
 module type S = sig

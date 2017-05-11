@@ -43,6 +43,10 @@ module Float_type = struct
     | Edge -> Option.value (get_float_elem_size ()) ~default:0
     | Px_from_edge px ->
       Option.value_map (get_float_elem_size ()) ~f:(fun size -> size + px) ~default:0
+
+  let is_floating = function
+    | None -> false
+    | Edge | Px_from_edge _ -> true
 end
 
 module Scroll_result = struct

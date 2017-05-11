@@ -71,19 +71,19 @@ module Make (Key : Key) = struct
       let scroll_top = -(Rect.top list_rect) in
       (* The height of the table, which excludes the height of the header *)
       let scroll_bot = scroll_top + Rect.height view_rect in
-      let key_top =
-        match Heights.find_by_height heights scroll_top with
-        | Some x -> Some x
-        | None -> Map.min_elt rows |> Option.map ~f:fst
-      in
-      let key_bot =
-        match Heights.find_by_height heights scroll_bot with
-        | Some x -> Some x
-        | None -> Map.max_elt rows |> Option.map ~f:fst
-      in
       let visible_range : _ Interval.t =
-        if scroll_top >= Heights.height heights then Empty
+        if scroll_top >= Heights.height heights || scroll_bot <= 0 then Empty
         else (
+          let key_top =
+            match Heights.find_by_height heights scroll_top with
+            | Some x -> Some x
+            | None -> Map.min_elt rows |> Option.map ~f:fst
+          in
+          let key_bot =
+            match Heights.find_by_height heights scroll_bot with
+            | Some x -> Some x
+            | None -> Map.max_elt rows |> Option.map ~f:fst
+          in
           match key_top, key_bot with
           | None,_ | _, None -> Empty
           | Some top, Some bot -> Range (top,bot)
