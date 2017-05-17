@@ -91,10 +91,10 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       in
       Incr.Map.unordered_fold rows
         ~init:Map.empty
-        ~f:(fun ~key:row_id ~data acc ->
+        ~add:(fun ~key:row_id ~data acc ->
           let key = create (sort_spec data) row_id in
           Map.add acc ~key ~data)
-        ~f_inverse:(fun ~key:row_id ~data acc ->
+        ~remove:(fun ~key:row_id ~data acc ->
           let key = create (sort_spec data) row_id in
           Map.remove acc key)
     ;;
@@ -835,15 +835,15 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let rows_to_render_with_html_ids =
       Incr.Map.unordered_fold (row_view >>| Row_view.rows_to_render)
         ~init:Key.Map.empty
-        ~f:(fun ~key ~data:row acc ->
+        ~add:(fun ~key ~data:row acc ->
           let row_html_id = Html_id.row table_id key.row_id in
           let cell_html_ids =
             List.map column_id_strs ~f:(Html_id.cell_of_parts row_html_id)
           in
           Map.add acc ~key ~data:({ row_html_id; cell_html_ids }, row)
         )
-        ~f_inverse:(fun ~key ~data:_ acc -> Map.remove acc key)
-        ~f_inverse_compose_f:(fun ~key ~old_data:_ ~new_data:row acc ->
+        ~remove:(fun ~key ~data:_ acc -> Map.remove acc key)
+        ~update:(fun ~key ~old_data:_ ~new_data:row acc ->
           Map.change acc key ~f:(Option.map ~f:(Tuple2.map_snd ~f:(fun _ -> row)))
         )
     in

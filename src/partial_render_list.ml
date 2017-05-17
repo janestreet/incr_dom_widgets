@@ -117,8 +117,8 @@ module Make (Key : Key) = struct
     let heights =
       Incr.Map.unordered_fold row_heights
         ~init:Heights.empty
-        ~f:(fun ~key ~data acc -> Heights.set acc ~key ~data)
-        ~f_inverse:(fun ~key ~data:_ acc -> Heights.remove acc key)
+        ~add:(fun ~key ~data acc -> Heights.set acc ~key ~data)
+        ~remove:(fun ~key ~data:_ acc -> Heights.remove acc key)
     in
     let just_keys =
       Incr.Map.mapi ~data_equal:(fun _ _ -> true)
