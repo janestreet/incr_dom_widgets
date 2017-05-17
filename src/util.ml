@@ -47,6 +47,11 @@ module Float_type = struct
   let is_floating = function
     | None -> false
     | Edge | Px_from_edge _ -> true
+
+  let px_from_edge : t -> int option = function
+    | None -> None
+    | Edge -> Some 0
+    | Px_from_edge px -> Some px
 end
 
 module Scroll_result = struct

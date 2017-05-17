@@ -43,6 +43,8 @@ module Float_type : sig
   val compute_offset : t -> get_float_elem_size:(unit -> int option) -> int
 
   val is_floating : t -> bool
+
+  val px_from_edge : t -> int option
 end
 
 module Scroll_result : sig

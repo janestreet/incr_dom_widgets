@@ -4,6 +4,10 @@ open Vdom
 
 include Table_intf
 
+let cutoff compare x =
+  Incr.set_cutoff x (Incr.Cutoff.of_compare compare);
+  x
+
 module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   include Util
 
@@ -215,7 +219,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         Scroll_region.of_id (Model.scroll_region m)
       in
       let sort_column =
-        let%map column_id = m >>| Model.sort_column
+        let%map column_id =
+          m >>| Model.sort_column |> cutoff [%compare: Column_id.t option]
         and columns = columns
         in
         Option.bind column_id ~f:(fun column_id ->
@@ -227,7 +232,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       in
       let sorted_rows =
         let%bind column = sort_column
-        and sort_dir = m >>| Model.sort_dir
+        and sort_dir = m >>| Model.sort_dir |> cutoff [%compare: Sort_dir.t option]
         in
         let sort_spec = Option.both column sort_dir in
         Key.sort sort_spec ~rows
@@ -387,22 +392,39 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     [%compare.equal: Column_id.t option] d.floating_col (Some column_id)
   ;;
 
-  let call_col_scroll_function (m : Model.t) ~column_id ~f ~is_floating_col =
+  let call_col_scroll_function ?f_if_currently_floating (m : Model.t) ~column_id ~f
+        ~is_floating_col =
     let open Option.Let_syntax in
-    let%bind elem_start, elem_end =
-      let%bind header_cell =
+    let%map cell_rect =
+      let%map header_cell =
         Dom_html.getElementById_opt (Html_id.column_header_cell m.id column_id)
       in
-      let cell_rect = Js_misc.viewport_rect_of_element header_cell in
+      Js_misc.viewport_rect_of_element header_cell
+    and { tbody_rect; view_rect } = m.visibility_info
+    in
+    let elem_start, elem_end, is_currently_floating =
       if not is_floating_col
-      then (Some (Js_misc.Rect.left cell_rect, Js_misc.Rect.right cell_rect))
+      then (Js_misc.Rect.left cell_rect, Js_misc.Rect.right cell_rect, false)
       else begin
-        let%map visibility_info = m.visibility_info in
-        let left = Js_misc.Rect.left visibility_info.tbody_rect in
-        left, left + Js_misc.Rect.width cell_rect
+        let left = Js_misc.Rect.left tbody_rect in
+        let width = Js_misc.Rect.width cell_rect in
+        let is_currently_floating =
+          match Float_type.px_from_edge m.float_first_col with
+          | None    -> false
+          | Some px ->
+            let float_pos_left  = view_rect.left + px in
+            let float_pos_right = float_pos_left + width in
+            tbody_rect.left  <= float_pos_left &&
+            tbody_rect.right >= float_pos_right
+        in
+        left, left + width, is_currently_floating
       end
     in
-    let%map { view_rect; _ } = Model.visibility_info m in
+    let f =
+      match is_currently_floating, f_if_currently_floating with
+      | true, Some f'      -> f'
+      | false, _ | _, None -> f
+    in
     f ~scroll_region_start:view_rect.left
       ~scroll_region_end:view_rect.right
       ~elem_start
@@ -430,7 +452,12 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ~start_margin:(m.scroll_margin.left + left_margin_offset)
         ~end_margin:m.scroll_margin.right
     in
-    Option.value (call_col_scroll_function m ~column_id ~f ~is_floating_col)
+    let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
+          ~elem_end:_ =
+      `Didn't_scroll
+    in
+    Option.value
+      (call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col)
       ~default:`Didn't_scroll
   ;;
 
@@ -453,26 +480,31 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let scroll_col_to_position ?keep_in_scroll_region (m:Model.t) (d:_ Derived_model.t)
         column_id ~position =
     let is_floating_col = is_floating_col d column_id in
-    let f =
-      match keep_in_scroll_region with
-      | None    ->
-        fun ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end:_ ->
-          Scroll.scroll_to_position
-            ?in_:d.scroll_region
-            Horizontal
-            ~position
-            ~scroll_region_start
-            ~elem_start
-      | Some () ->
-        let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
-        Scroll.scroll_to_position_and_into_region
-          ?in_:d.scroll_region
-          Horizontal
-          ~position
-          ~start_margin:(m.scroll_margin.left + left_margin_offset)
-          ~end_margin:m.scroll_margin.right
+    let scroll_to_position ~scroll_region_start ~scroll_region_end:_
+          ~elem_start ~elem_end:_ =
+      Scroll.scroll_to_position
+        ?in_:d.scroll_region
+        Horizontal
+        ~position
+        ~scroll_region_start
+        ~elem_start
     in
-    Option.value (call_col_scroll_function m ~column_id ~f ~is_floating_col)
+    let scroll_to_position_and_into_region =
+      let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
+      Scroll.scroll_to_position_and_into_region
+        ?in_:d.scroll_region
+        Horizontal
+        ~position
+        ~start_margin:(m.scroll_margin.left + left_margin_offset)
+        ~end_margin:m.scroll_margin.right
+    in
+    let f, f_if_currently_floating =
+      match keep_in_scroll_region with
+      | None    -> scroll_to_position                , None
+      | Some () -> scroll_to_position_and_into_region, Some scroll_to_position
+    in
+    Option.value
+      (call_col_scroll_function m ~column_id ~f ~is_floating_col ?f_if_currently_floating)
       ~default:`Didn't_scroll
   ;;
 
@@ -494,7 +526,11 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ~start_margin:(m.scroll_margin.left + left_margin_offset)
         ~end_margin:m.scroll_margin.right
     in
-    call_col_scroll_function m ~column_id ~f ~is_floating_col
+    let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
+          ~elem_end:_ =
+      true
+    in
+    call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col
   ;;
 
   let get_row_position (m:Model.t) (d:_ Derived_model.t) row_id =
@@ -502,7 +538,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     Option.join (call_row_scroll_function m d ~row_id ~f)
   ;;
 
-  let get_col_position (m:Model.t) (d: _ Derived_model.t) column_id =
+  let get_col_position (m:Model.t) (d: _ Derived_model.t)
+        column_id =
     let is_floating_col = is_floating_col d column_id in
     let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end:_ =
       Scroll.get_position ~scroll_region_start ~elem_start
@@ -522,8 +559,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     Scroll_result.combine row_scroll col_scroll
   ;;
 
-  let scroll_focus_to_position ?keep_in_scroll_region (m:Model.t) d
-        ~position:(x, y) =
+  let scroll_focus_to_position ?keep_in_scroll_region (m:Model.t) d ~position:(x, y) =
     let row_scroll =
       Option.value_map m.focus_row ~default:`Didn't_scroll
         ~f:(scroll_row_to_position ?keep_in_scroll_region m d ~position:y)
@@ -537,7 +573,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   let focus_is_in_scroll_region (m : Model.t) d =
     let row = Option.bind m.focus_row ~f:(row_is_in_scroll_region m d) in
-    let col = Option.bind m.focus_col ~f:(col_is_in_scroll_region m d) in
+    let col =
+      Option.bind m.focus_col ~f:(col_is_in_scroll_region m d)
+    in
     match row, col with
     | None, None       -> None
     | None, Some b
@@ -579,11 +617,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     Dom_html.getElementById_opt (Html_id.row table_id row_id)
 
   let update_col_group_row_height (m : Model.t) (d : _ Derived_model.t) =
-    let has_floating_header () =
-      match m.float_header with
-      | Edge | Px_from_edge _ -> true
-      | None -> false
-    in
+    let has_floating_header () = Float_type.is_floating m.float_header in
     let height =
       if not (d.has_col_groups && has_floating_header ())
       then None
@@ -671,12 +705,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     )
 
   let sticky_pos side (pos:Float_type.t Incr.t) =
-    let%map pos =
-      match%map pos with
-      | None -> None
-      | Edge -> Some 0
-      | Px_from_edge px -> Some px
-    in
+    let%map pos = pos >>| Float_type.px_from_edge in
     Option.map pos ~f:(fun pos -> side, pos)
 
   let finalize_sticky_pos sticky_pos =
