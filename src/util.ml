@@ -116,18 +116,25 @@ module Scroll = struct
       adjust_margins ~start_margin ~end_margin ~scroll_region_start ~scroll_region_end
         ~elem_start ~elem_end
     in
-    let overflow_past_start =
+    let start_overflow =
       overflow_past_start ~scroll_region_start ~start_margin ~elem_start
     in
-    let overflow_past_end =
+    let end_overflow =
       overflow_past_end ~scroll_region_end ~end_margin ~elem_end
     in
     let shift =
-      match overflow_past_start, overflow_past_end with
-      | None, None          -> 0
+      match start_overflow, end_overflow with
+      | None, None          ->  0
       | Some shift, None
-      | Some shift, Some _
-      | None, Some shift    -> shift
+      | Some shift, Some _  -> shift
+      | None, Some shift    ->
+        (* Do not shift element start past the start margin *)
+        let excess_shift =
+          overflow_past_start ~scroll_region_start ~start_margin
+            ~elem_start:(elem_start - shift)
+          |> Option.value ~default:0
+        in
+        shift + excess_shift
     in
     scroll ?in_ dir shift
   ;;

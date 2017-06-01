@@ -6,7 +6,7 @@ bug-reports: "https://github.com/janestreet/incr_dom_widgets/issues"
 dev-repo: "git+https://github.com/janestreet/incr_dom_widgets.git"
 license: "Apache-2.0"
 build: [
-  ["jbuilder" "build" "--only-packages" "incr_dom_widgets" "--root" "." "-j" jobs "@install"]
+  ["jbuilder" "build" "-p" name "-j" jobs]
 ]
 depends: [
   "incr_dom"
