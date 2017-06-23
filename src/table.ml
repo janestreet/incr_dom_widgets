@@ -255,6 +255,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         let%map columns = columns in
         Column_id.Map.of_alist_exn (List.mapi columns ~f:(fun i (col_id, _) -> col_id, i))
       in
+      let has_col_groups =
+        let%map columns = columns in
+        List.exists columns ~f:(fun (_, col) -> Option.is_some col.group)
+      in
+      let columns =
+        let%map columns = columns in
+        Int.Map.of_alist_exn (List.mapi columns ~f:(fun i col -> i, col))
+      in
       let%map row_view = Row_view.create ~rows:sorted_rows ~height_cache ~measurements
       and rows = rows
       and sorted_rows = sorted_rows
@@ -263,11 +271,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       and sort_column = sort_column
       and scroll_region = scroll_region
       and floating_col = floating_col
+      and has_col_groups = has_col_groups
       in
-      let has_col_groups =
-        List.exists columns ~f:(fun (_, col) -> Option.is_some col.group)
-      in
-      let columns = Int.Map.of_alist_exn (List.mapi columns ~f:(fun i col -> i, col)) in
       { rows
       ; sorted_rows
       ; columns
@@ -904,8 +909,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let spacer_after  = unstage (spacer ~key:"after")  in
     let columns = d >>| Derived_model.columns in
     let column_ids =
-      let%map column_num_lookup = d >>| Derived_model.column_num_lookup in
-      Map.keys column_num_lookup
+      let%map column_ids = d >>| Derived_model.columns in
+      List.map (Map.data column_ids) ~f:fst
     in
     let row_view = d >>| Derived_model.row_view in
     let%bind table_id = m >>| Model.id
