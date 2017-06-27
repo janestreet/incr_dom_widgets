@@ -45,7 +45,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     type t =
       { tbody_rect: int Js_misc.Rect.t
       ; view_rect: int Js_misc.Rect.t
-      } [@@deriving compare, sexp]
+      } [@@deriving compare, sexp, fields]
   end
 
   module Key = struct
@@ -196,6 +196,16 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           else (get_sort_criteria None)
       in
       { t with sort_criteria }
+
+    let get_tbody_rect t =
+      Option.map t.visibility_info ~f:Visibility_info.tbody_rect
+
+    let get_focus_rect t =
+      let open Option.Let_syntax in
+      let%bind row_id = t.focus_row and col_id = t.focus_col in
+      let focus_id = Html_id.cell t.id row_id col_id in
+      let%map focus_elem = Dom_html.getElementById_opt focus_id in
+      Js_misc.client_rect_of_element focus_elem
   end
 
   module Derived_model = struct
@@ -591,6 +601,48 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let get_focus_position (m : Model.t) (d : _ Derived_model.t) =
     Option.bind m.focus_col ~f:(get_col_position m d),
     Option.bind m.focus_row ~f:(get_row_position m d)
+  ;;
+
+  let find_row_by_position (m : Model.t) (d : _ Derived_model.t) position =
+    let open Option.Let_syntax in
+    let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
+    let position = position - Js_misc.Rect.top tbody_rect in
+    if position < 0
+    then `Before
+    else (
+      match Row_view.find_by_position d.row_view ~position with
+      | Some { Key. row_id; _ } -> `At row_id
+      | None                    -> `After
+    )
+  ;;
+
+  let find_col_by_position (m : Model.t) (d : _ Derived_model.t) position =
+    let open Option.Let_syntax in
+    let result =
+      List.fold_until (Map.data d.columns) ~init:true ~f:(fun is_first (col_id, _) ->
+        let col_header_rect =
+          let html_id = Html_id.column_header_cell m.id col_id in
+          let%map elem = Dom_html.getElementById_opt html_id in
+          Js_misc.viewport_rect_of_element elem
+        in
+        match col_header_rect with
+        | None      -> Stop None
+        | Some rect ->
+          if is_first && position < Js_misc.Rect.left rect
+          then (Stop (Some `Before))
+          else if position <= Js_misc.Rect.right rect
+          then (Stop (Some (`At col_id)))
+          else (Continue false)
+      )
+    in
+    match result with
+    | Stopped_early result -> result
+    | Finished      false  -> Some `After
+    | Finished      true   ->
+      let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
+      if position < Js_misc.Rect.left tbody_rect
+      then `Before
+      else `After
   ;;
 
   let on_display ~(old:Model.t) (model:Model.t) d =

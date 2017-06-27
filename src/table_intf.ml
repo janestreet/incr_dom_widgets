@@ -180,6 +180,13 @@ module type S = sig
       -> Column_id.t
       -> next_dir:(Sort_dir.t option -> Sort_dir.t option)
       -> t
+
+    (** Returns the bounding client rectangle of the table body. *)
+    val get_tbody_rect : t -> int Js_misc.Rect.t option
+
+    (** Returns the bounding client rectangle of the currently focused cell, if any.
+        This only returns a value if both the focus row and focus column are set. *)
+    val get_focus_rect : t -> int Js_misc.Rect.t option
   end
 
   module Derived_model : sig
@@ -301,6 +308,25 @@ module type S = sig
     :  Model.t
     -> _ Derived_model.t
     -> int option * int option
+
+  (** Finds the row id at a given vertical position on the page, or indicates that the
+      position is before/after all the rows in the table.
+      It only returns [None] if the model has no visibility info. *)
+  val find_row_by_position
+    :  Model.t
+    -> _ Derived_model.t
+    -> int
+    -> [ `Before | `At of Row_id.t | `After ] option
+
+  (** Finds the column id at a given horizontal position on the page, or indicates that
+      the position is before/after all the columns in the table.
+      It only returns [None] if the model has no visibility info or if a call to
+      [Dom_html.getElementById_opt] on a header cell id returns [None]. *)
+  val find_col_by_position
+    :  Model.t
+    -> _ Derived_model.t
+    -> int
+    -> [ `Before | `At of Column_id.t | `After ] option
 
   (** Used for scrolling to rows/columns upon focusing them *)
   val on_display

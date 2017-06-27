@@ -26,9 +26,9 @@ module Make (Key : Key) = struct
       end)
 
     (** Returns the row (if any) that is at the specified height *)
-    let find_by_height (heights:t) height =
+    let find_by_position (heights:t) position =
       search heights ~f:(fun ~left ~right:_ ->
-        if height < left then `Left else `Right
+        if position < left then `Left else `Right
       )
       |> Option.map ~f:fst
 
@@ -51,6 +51,8 @@ module Make (Key : Key) = struct
   (** How many extra rows will be rendered outside of visible range. Must be even to
       preserve parity for alternating row colours. *)
   let render_width = 6
+
+  let find_by_position t ~position = Heights.find_by_position t.heights position
 
   let visible_range
         ~(measurements:Measurements.t option Incr.t)
@@ -75,12 +77,12 @@ module Make (Key : Key) = struct
         if scroll_top >= Heights.height heights || scroll_bot <= 0 then Empty
         else (
           let key_top =
-            match Heights.find_by_height heights scroll_top with
+            match Heights.find_by_position heights scroll_top with
             | Some x -> Some x
             | None -> Map.min_elt rows |> Option.map ~f:fst
           in
           let key_bot =
-            match Heights.find_by_height heights scroll_bot with
+            match Heights.find_by_position heights scroll_bot with
             | Some x -> Some x
             | None -> Map.max_elt rows |> Option.map ~f:fst
           in

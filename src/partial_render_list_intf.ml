@@ -63,6 +63,8 @@ module type S = sig
     -> measurements:Measurements.t option Incr.t
     -> 'v t Incr.t
 
+  val find_by_position : _ t -> position:int -> Key.t option
+
   (** Meant for rendering, apps should normally use Incr.Map.mapi' on this *)
   val rows_to_render : 'v t -> 'v Key.Map.t
 
