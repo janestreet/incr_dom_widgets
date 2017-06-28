@@ -13,6 +13,8 @@ module Make (Key : Key) = struct
     [@@deriving fields, compare, sexp_of]
 
     let empty ~height_guess = { cache = Key.Map.empty; height_guess }
+
+    let height t key = Option.value (Map.find t.cache key) ~default:t.height_guess
   end
 
   module Heights = struct
@@ -25,7 +27,7 @@ module Make (Key : Key) = struct
         let combine left right = left + right
       end)
 
-    (** Returns the row (if any) that is at the specified height *)
+    (** Returns the row (if any) that is at the specified position *)
     let find_by_position (heights:t) position =
       search heights ~f:(fun ~left ~right:_ ->
         if position < left then `Left else `Right
@@ -34,19 +36,30 @@ module Make (Key : Key) = struct
 
     (** The cumulative height of all the rows *)
     let height = accum
+
+    let get_position_and_height t key =
+      let before, at, (_ : t) = split t key in
+      height before, at
   end
 
-  type 'v t = { heights: Heights.t (** Acceleration structure for height queries *)
-              ; render_range: Key.t Interval.t (** Section of keys to put in DOM *)
-              ; rows_to_render:'v Key.Map.t
-              ; measurements: Measurements.t option
-              (** The height cache is stashed here after trimming so that it can be
-                  accessed later in measure_heights. This way the app doesn't have to
-                  store it in its derived model and pass it back to us. The app still
-                  stores the height cache in its model, it just doesn't also have to store
-                  a trimmed version in its derived model.*)
-              ; height_cache: Height_cache.t
-              } [@@deriving fields]
+  type 'v t =
+    (** Acceleration structure for height queries *)
+    { heights: Heights.t
+    (** Section of keys to put in DOM
+        This includes extra rows above and below what is actually visible *)
+    ; render_range: Key.t Interval.t
+    (** Full map of [render_range]  *)
+    ; rows_to_render: 'v Key.Map.t
+    ; measurements: Measurements.t option
+    (** The height cache is stashed here after trimming so that it can be
+        accessed later in measure_heights. This way the app doesn't have to
+        store it in its derived model and pass it back to us. The app still
+        stores the height cache in its model, it just doesn't also have to store
+        a trimmed version in its derived model.*)
+    ; height_cache: Height_cache.t
+    ; min_key: Key.t option
+    ; max_key: Key.t option
+    } [@@deriving fields]
 
   (** How many extra rows will be rendered outside of visible range. Must be even to
       preserve parity for alternating row colours. *)
@@ -54,7 +67,20 @@ module Make (Key : Key) = struct
 
   let find_by_position t ~position = Heights.find_by_position t.heights position
 
-  let visible_range
+  let find_by_relative_position t key ~offset =
+    let key_position, key_height = Heights.get_position_and_height t.heights key in
+    let key_height = Option.value key_height ~default:0 in
+    let find_by_position position ~default =
+      match find_by_position t ~position with
+      | Some key -> Some key
+      | None     -> default
+    in
+    match Ordering.of_int offset with
+    | Equal   -> Some key
+    | Less    -> find_by_position (offset + key_position + key_height) ~default:t.min_key
+    | Greater -> find_by_position (offset + key_position)              ~default:t.max_key
+
+  let get_visible_range
         ~(measurements:Measurements.t option Incr.t)
         ~(heights:Heights.t Incr.t)
         ~(rows:_ Key.Map.t Incr.t)
@@ -67,10 +93,10 @@ module Make (Key : Key) = struct
     | None -> Interval.Empty
     | Some { list_rect; view_rect } ->
       let module Rect = Js_misc.Rect in
-      (* The top of the viewport, as measured from the top of the table body. Note that
+      (* The top of the view_rect, as measured from the top of the table body. Note that
          the top of tbody_rect is measured against the viewport, and so is a negative
-         number when you're scrolled into the middle of the table.  *)
-      let scroll_top = -(Rect.top list_rect) in
+         number when the top row is above the top of the viewport.  *)
+      let scroll_top = Rect.top view_rect - Rect.top list_rect in
       (* The height of the table, which excludes the height of the header *)
       let scroll_bot = scroll_top + Rect.height view_rect in
       let visible_range : _ Interval.t =
@@ -126,7 +152,7 @@ module Make (Key : Key) = struct
       Incr.Map.mapi ~data_equal:(fun _ _ -> true)
         rows ~f:(fun ~key:_ ~data:_ -> ())
     in
-    let visible_range = visible_range ~measurements ~heights ~rows in
+    let visible_range = get_visible_range ~measurements ~heights ~rows in
     let render_range =
       let%map visible_range = visible_range
       and just_keys = just_keys
@@ -169,15 +195,28 @@ module Make (Key : Key) = struct
       in
       Incr.Map.subrange rows sub_range
     in
+    let min_and_max_key =
+      let%map just_keys = just_keys in
+      Option.map (Map.min_elt just_keys) ~f:fst,
+      Option.map (Map.max_elt just_keys) ~f:fst
+    in
     let%map heights = heights
     and rows_to_render = rows_to_render
     and render_range = render_range
     and trimmed_height_cache = trimmed_height_cache
     and height_cache = height_cache
     and measurements = measurements
+    and min_key, max_key = min_and_max_key
     in
     let height_cache = { height_cache with cache = trimmed_height_cache } in
-    { heights; render_range; rows_to_render; measurements; height_cache }
+    { heights
+    ; render_range
+    ; rows_to_render
+    ; measurements
+    ; height_cache
+    ; min_key
+    ; max_key
+    }
   ;;
 
   let spacer_heights t =
@@ -193,9 +232,9 @@ module Make (Key : Key) = struct
 
   let call_scroll_function t ~key ~f =
     Option.bind t.measurements ~f:(fun { Measurements. list_rect; view_rect } ->
-      let before, at, (_ : Heights.t) = Heights.split t.heights key in
-      Option.map at ~f:(fun height ->
-        let elem_start = Heights.height before + list_rect.top in
+      let position, height = Heights.get_position_and_height t.heights key in
+      Option.map height ~f:(fun height ->
+        let elem_start = position + list_rect.top in
         f ~scroll_region_start:view_rect.top
           ~scroll_region_end:view_rect.bottom
           ~elem_start
@@ -236,6 +275,14 @@ module Make (Key : Key) = struct
   let get_position t ~key =
     let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end:_ =
       Scroll.get_position ~scroll_region_start ~elem_start
+    in
+    call_scroll_function t ~key ~f
+  ;;
+
+  let get_top_and_bottom t ~key =
+    let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end =
+      let top = Scroll.get_position ~scroll_region_start ~elem_start in
+      top, top + elem_end - elem_start
     in
     call_scroll_function t ~key ~f
   ;;

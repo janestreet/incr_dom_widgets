@@ -51,7 +51,12 @@ module type S = sig
       and use that as your guess. *)
   module Height_cache : sig
     type t [@@deriving compare, sexp_of]
+
     val empty : height_guess:int -> t
+
+    (** [height t key] will return the actual height of [key] if available, otherwise it
+        returns [height_guess] *)
+    val height : t -> Key.t -> int
   end
 
   (** Meant to be stored in the derived model *)
@@ -64,6 +69,11 @@ module type S = sig
     -> 'v t Incr.t
 
   val find_by_position : _ t -> position:int -> Key.t option
+
+  (* [find_by_relative_position t key ~offset] returns the key at a distance of
+     approximately [offset] away from [key], preferring closer elements to farther ones.
+     If the offset extends past the end of the list, the end key is returned instead. *)
+  val find_by_relative_position : _ t -> Key.t -> offset:int -> Key.t option
 
   (** Meant for rendering, apps should normally use Incr.Map.mapi' on this *)
   val rows_to_render : 'v t -> 'v Key.Map.t
@@ -115,6 +125,11 @@ module type S = sig
     :  _ t
     -> key : Key.t
     -> int option
+
+  val get_top_and_bottom
+    :  _ t
+    -> key : Key.t
+    -> (int * int) option
 
   (** [measure_heights_simple] updates a height cache by measuring the rendered elements,
       relying on the app to provide a function for finding and measuring the element for a

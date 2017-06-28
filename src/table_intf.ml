@@ -183,10 +183,6 @@ module type S = sig
 
     (** Returns the bounding client rectangle of the table body. *)
     val get_tbody_rect : t -> int Js_misc.Rect.t option
-
-    (** Returns the bounding client rectangle of the currently focused cell, if any.
-        This only returns a value if both the focus row and focus column are set. *)
-    val get_focus_rect : t -> int Js_misc.Rect.t option
   end
 
   module Derived_model : sig
@@ -214,6 +210,8 @@ module type S = sig
 
     val set_focus_row : Row_id.t option -> t
     val set_focus_col : Column_id.t option -> t
+
+    val page_focus_row : Focus_dir.t -> t
   end
 
   (** [current_key m d row_id] returns [row_id]'s [Key.t] associated with the current sort
@@ -308,6 +306,13 @@ module type S = sig
     :  Model.t
     -> _ Derived_model.t
     -> int option * int option
+
+  (** Returns the bounding client rectangle of the currently focused cell, if any.
+      This only returns a value if both the focus row and focus column are set. *)
+  val get_focus_rect
+    :  Model.t
+    -> _ Derived_model.t
+    -> int Js_misc.Rect.t option
 
   (** Finds the row id at a given vertical position on the page, or indicates that the
       position is before/after all the rows in the table.
