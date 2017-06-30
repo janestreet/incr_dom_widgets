@@ -168,6 +168,8 @@ module type S = sig
     val sort_column : t -> Column_id.t option
     val sort_dir : t -> Sort_dir.t option
 
+    val scroll_margin : t -> Margin.t
+
     val set_sort_criteria : t -> Sort_criteria.t option -> t
 
     (** [cycle_sorting] computes and sets new sort criteria based on the current criteria.
@@ -269,24 +271,31 @@ module type S = sig
     -> position:(int * int)
     -> Scroll_result.t
 
-  (** Functions [*_is_in_scroll_region] and [get_*_position] return [None] if the specified
-      element is not found (e.g. there is no focus, or there is no row/column with the
-      given id), or if the visibility measurements are not yet available. *)
+  (** Functions [*_is_in_scroll_region] and [get_*_position] return [None] if the
+      specified element is not found (e.g. there is no focus, or there is no row/column
+      with the given id), or if the visibility measurements are not yet available.
+
+      By default, the model's scroll margin is used to compute the bounds of the scroll
+      region. However, if a [scroll_margin] argument is given, that will be use instead.
+  *)
 
   val row_is_in_scroll_region
-    :  Model.t
+    :  ?scroll_margin:Margin.t
+    -> Model.t
     -> _ Derived_model.t
     -> Row_id.t
     -> bool option
 
   val col_is_in_scroll_region
-    :  Model.t
+    :  ?scroll_margin:Margin.t
+    -> Model.t
     -> _ Derived_model.t
     -> Column_id.t
     -> bool option
 
   val focus_is_in_scroll_region
-    :  Model.t
+    :  ?scroll_margin:Margin.t
+    -> Model.t
     -> _ Derived_model.t
     -> bool option
 

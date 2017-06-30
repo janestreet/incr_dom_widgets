@@ -20,6 +20,8 @@ module Margin : sig
   val uniform : int -> t
 
   val create : ?top:int -> ?left:int -> ?bottom:int -> ?right:int -> unit -> t
+
+  val adjust : ?top:int -> ?left:int -> ?bottom:int -> ?right:int -> t    -> t
 end
 
 module Scroll_region : sig

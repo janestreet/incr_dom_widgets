@@ -20,6 +20,13 @@ module Margin = struct
   let none = uniform 0
 
   let create ?(top=0) ?(left=0) ?(bottom=0) ?(right=0) () = { top; left; bottom; right }
+
+  let adjust ?(top=0) ?(left=0) ?(bottom=0) ?(right=0) t =
+    { top    = t.top    + top
+    ; left   = t.left   + left
+    ; bottom = t.bottom + bottom
+    ; right  = t.right  + right
+    }
 end
 
 module Scroll_region = struct

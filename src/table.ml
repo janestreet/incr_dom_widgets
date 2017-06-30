@@ -514,22 +514,26 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ~default:`Didn't_scroll
   ;;
 
-  let row_is_in_scroll_region (m : Model.t) (d : _ Derived_model.t) row_id =
+  let row_is_in_scroll_region ?scroll_margin (m : Model.t) (d : _ Derived_model.t)
+        row_id =
     let f =
+      let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
       Row_view.is_in_region
-        ~top_margin:m.scroll_margin.top
-        ~bottom_margin:m.scroll_margin.bottom
+        ~top_margin:scroll_margin.top
+        ~bottom_margin:scroll_margin.bottom
     in
     Option.join (call_row_scroll_function m d ~row_id ~f)
   ;;
 
-  let col_is_in_scroll_region (m : Model.t) (d : _ Derived_model.t) column_id =
+  let col_is_in_scroll_region ?scroll_margin (m : Model.t) (d : _ Derived_model.t)
+        column_id =
     let is_floating_col = is_floating_col d column_id in
     let left_margin_offset = left_margin_offset_adjustment m ~is_floating_col in
     let f =
+      let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
       Scroll.is_in_region
-        ~start_margin:(m.scroll_margin.left + left_margin_offset)
-        ~end_margin:m.scroll_margin.right
+        ~start_margin:(scroll_margin.left + left_margin_offset)
+        ~end_margin:scroll_margin.right
     in
     let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
           ~elem_end:_ =
@@ -609,10 +613,10 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     | Some row -> set_focus_row m (Some (Key.row_id row))
   ;;
 
-  let focus_is_in_scroll_region (m : Model.t) d =
-    let row = Option.bind m.focus_row ~f:(row_is_in_scroll_region m d) in
+  let focus_is_in_scroll_region ?scroll_margin (m : Model.t) d =
+    let row = Option.bind m.focus_row ~f:(row_is_in_scroll_region ?scroll_margin m d) in
     let col =
-      Option.bind m.focus_col ~f:(col_is_in_scroll_region m d)
+      Option.bind m.focus_col ~f:(col_is_in_scroll_region ?scroll_margin m d)
     in
     match row, col with
     | None, None       -> None
