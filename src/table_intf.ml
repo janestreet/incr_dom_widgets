@@ -172,6 +172,8 @@ module type S = sig
 
     val set_sort_criteria : t -> Sort_criteria.t option -> t
 
+    val set_float_header : t -> Float_type.t -> t
+
     (** [cycle_sorting] computes and sets new sort criteria based on the current criteria.
         If the given column id is equal to the current sort column, the sort direction is
         updated by calling [next_dir] on the current sort direction.  Otherwise, the sort

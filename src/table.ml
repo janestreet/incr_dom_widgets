@@ -183,6 +183,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
     let set_sort_criteria = Field.fset Fields.sort_criteria
 
+    let set_float_header = Field.fset Fields.float_header
+
     let cycle_sorting t column_id ~next_dir =
       let get_sort_criteria prev_dir =
         Option.map (next_dir prev_dir) ~f:(fun dir -> { Sort_criteria. dir; column_id })
