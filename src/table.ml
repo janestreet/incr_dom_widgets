@@ -218,9 +218,11 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
     let create m ~rows ~(columns : (Column_id.t * _ Column.t) list Incr.t) =
       let scroll_region =
-        (* This needs to be mapped on [m] and not [m.scroll_region] so that it refires on
-           every stabilize and can actually find the element after it is drawn. *)
-        let%map m = m in
+        (* This needs to fire whenever the model or rows change so that it can actually
+           find the element [scroll_region] after it is drawn. *)
+        let%map m = m
+        and _ = rows
+        in
         Scroll_region.of_id (Model.scroll_region m)
       in
       let sort_column =
@@ -760,7 +762,13 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   let update_visibility_info (m : Model.t) (d : _ Derived_model.t) =
     let open Option.Let_syntax in
-    let%map scroll_region = d.scroll_region
+    let scroll_region =
+      match d.scroll_region with
+      | Some _ as a -> a
+      | None ->
+        Scroll_region.of_id (Model.scroll_region m)
+    in
+    let%map scroll_region = scroll_region
     and tbody = Dom_html.getElementById_opt m.tbody_html_id
     in
     let view_rect =
