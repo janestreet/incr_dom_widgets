@@ -8,8 +8,8 @@ module Make (Key : Key) = struct
   module Key = Key
 
   module Height_cache = struct
-    type t = { cache: int Key.Map.t
-             ; height_guess: int }
+    type t = { cache: float Key.Map.t
+             ; height_guess: float }
     [@@deriving fields, compare, sexp_of]
 
     let empty ~height_guess = { cache = Key.Map.empty; height_guess }
@@ -18,13 +18,13 @@ module Make (Key : Key) = struct
   end
 
   module Heights = struct
-    include Splay_tree.Make_with_reduction (Key) (Int) (struct
+    include Splay_tree.Make_with_reduction (Key) (Float) (struct
         type key = Key.t
-        type data = int (* height *)
-        type accum = int
-        let identity = 0
+        type data = float (* height *)
+        type accum = float
+        let identity = 0.
         let singleton ~key:_ ~data = data
-        let combine left right = left + right
+        let combine left right = left +. right
       end)
 
     (** Returns the row (if any) that is at the specified position *)
@@ -69,16 +69,18 @@ module Make (Key : Key) = struct
 
   let find_by_relative_position t key ~offset =
     let key_position, key_height = Heights.get_position_and_height t.heights key in
-    let key_height = Option.value key_height ~default:0 in
+    let key_height = Option.value key_height ~default:0. in
     let find_by_position position ~default =
       match find_by_position t ~position with
       | Some key -> Some key
       | None     -> default
     in
-    match Ordering.of_int offset with
+    match Ordering.of_int (Float.compare offset 0.) with
     | Equal   -> Some key
-    | Less    -> find_by_position (offset + key_position + key_height) ~default:t.min_key
-    | Greater -> find_by_position (offset + key_position)              ~default:t.max_key
+    | Less    ->
+      find_by_position (offset +. key_position +. key_height) ~default:t.min_key
+    | Greater ->
+      find_by_position (offset +. key_position)               ~default:t.max_key
 
   let get_visible_range
         ~(measurements:Measurements.t option Incr.t)
@@ -96,11 +98,11 @@ module Make (Key : Key) = struct
       (* The top of the view_rect, as measured from the top of the table body. Note that
          the top of tbody_rect is measured against the viewport, and so is a negative
          number when the top row is above the top of the viewport.  *)
-      let scroll_top = Rect.top view_rect - Rect.top list_rect in
+      let scroll_top = Rect.top view_rect -. Rect.top list_rect in
       (* The height of the table, which excludes the height of the header *)
-      let scroll_bot = scroll_top + Rect.height view_rect in
+      let scroll_bot = scroll_top +. Rect.float_height view_rect in
       let visible_range : _ Interval.t =
-        if scroll_top >= Heights.height heights || scroll_bot <= 0 then Empty
+        if scroll_top >= Heights.height heights || scroll_bot <= 0. then Empty
         else (
           let key_top =
             match Heights.find_by_position heights scroll_top with
@@ -222,11 +224,9 @@ module Make (Key : Key) = struct
   let spacer_heights t =
     let%map render_range = t >>| render_range and heights = t >>| heights in
     match (render_range : _ Interval.t)  with
-    | Empty -> (0, Heights.height heights)
+    | Empty -> (0., Heights.height heights)
     | Range (min_key, max_key) ->
-      let { Heights.Partition.lt; gt; _ } =
-        Heights.partition heights ~min_key ~max_key
-      in
+      let { Heights.Partition.lt; gt; _ } = Heights.partition heights ~min_key ~max_key in
       (Heights.height lt, Heights.height gt)
   ;;
 
@@ -234,11 +234,11 @@ module Make (Key : Key) = struct
     Option.bind t.measurements ~f:(fun { Measurements. list_rect; view_rect } ->
       let position, height = Heights.get_position_and_height t.heights key in
       Option.map height ~f:(fun height ->
-        let elem_start = position + list_rect.top in
+        let elem_start = position +. list_rect.top in
         f ~scroll_region_start:view_rect.top
           ~scroll_region_end:view_rect.bottom
           ~elem_start
-          ~elem_end:(elem_start + height)
+          ~elem_end:(elem_start +. height)
       )
     )
   ;;
@@ -282,7 +282,7 @@ module Make (Key : Key) = struct
   let get_top_and_bottom t ~key =
     let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end =
       let top = Scroll.get_position ~scroll_region_start ~elem_start in
-      top, top + elem_end - elem_start
+      top, top +. elem_end -. elem_start
     in
     call_scroll_function t ~key ~f
   ;;
@@ -292,8 +292,9 @@ module Make (Key : Key) = struct
     | None -> cache
     | Some height ->
       (* Optimization: Don't bother adding measured height to [height_cache] if it
-         equals the existing height for that key. *)
-      if [%compare.equal:int option] (Map.find cache key) (Some height)
+         is approximately equal to the existing height for that key. *)
+      let float_approx_equal f1 f2 = Float.(abs (f1 - f2) < 0.001) in
+      if Option.equal float_approx_equal (Map.find cache key) (Some height)
       then cache
       else (Map.add cache ~key ~data:height)
 
@@ -307,7 +308,7 @@ module Make (Key : Key) = struct
   ;;
 
   type 'm measure_heights_acc =
-    { cache   : int Key.Map.t
+    { cache   : float Key.Map.t
     ; prev    : 'm option
     ; current : (Key.t * 'm option) option
     }

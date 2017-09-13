@@ -8,20 +8,20 @@ end
 
 module Margin : sig
   type t =
-    { top : int
-    ; left : int
-    ; bottom : int
-    ; right : int
+    { top    : float
+    ; left   : float
+    ; bottom : float
+    ; right  : float
     }
   [@@deriving fields, compare, sexp_of]
 
   val none : t
 
-  val uniform : int -> t
+  val uniform : float -> t
 
-  val create : ?top:int -> ?left:int -> ?bottom:int -> ?right:int -> unit -> t
+  val create : ?top:float -> ?left:float -> ?bottom:float -> ?right:float -> unit -> t
 
-  val adjust : ?top:int -> ?left:int -> ?bottom:int -> ?right:int -> t    -> t
+  val adjust : ?top:float -> ?left:float -> ?bottom:float -> ?right:float -> t    -> t
 end
 
 module Scroll_region : sig
@@ -42,7 +42,7 @@ module Float_type : sig
       [get_float_elem_size] is a function that measures the relevant size of the floating
       element if applicable (height for floating header, width for floating first column).
   *)
-  val compute_offset : t -> get_float_elem_size:(unit -> int option) -> int
+  val compute_offset : t -> get_float_elem_size:(unit -> float option) -> float
 
   val is_floating : t -> bool
 
@@ -77,12 +77,12 @@ module Scroll : sig
   val scroll_into_region
     :  ?in_                : Scroll_region.t
     -> Dir.t
-    -> start_margin        : int
-    -> end_margin          : int
-    -> scroll_region_start : int
-    -> scroll_region_end   : int
-    -> elem_start          : int
-    -> elem_end            : int
+    -> start_margin        : float
+    -> end_margin          : float
+    -> scroll_region_start : float
+    -> scroll_region_end   : float
+    -> elem_start          : float
+    -> elem_end            : float
     -> Scroll_result.t
 
   (** [scroll_to_position] scrolls the element with position from [elem_start] to
@@ -96,9 +96,9 @@ module Scroll : sig
   val scroll_to_position
     :  ?in_                : Scroll_region.t
     -> Dir.t
-    -> position            : int
-    -> scroll_region_start : int
-    -> elem_start          : int
+    -> position            : float
+    -> scroll_region_start : float
+    -> elem_start          : float
     -> Scroll_result.t
 
   (** [scroll_to_position_and_into_region] first calls [scroll_to_position], followed by
@@ -106,13 +106,13 @@ module Scroll : sig
   val scroll_to_position_and_into_region
     :  ?in_                : Scroll_region.t
     -> Dir.t
-    -> position            : int
-    -> start_margin        : int
-    -> end_margin          : int
-    -> scroll_region_start : int
-    -> scroll_region_end   : int
-    -> elem_start          : int
-    -> elem_end            : int
+    -> position            : float
+    -> start_margin        : float
+    -> end_margin          : float
+    -> scroll_region_start : float
+    -> scroll_region_end   : float
+    -> elem_start          : float
+    -> elem_end            : float
     -> Scroll_result.t
 
   (** [is_in_region] checks if the element with position from [elem_start] to [elem_end]
@@ -120,20 +120,20 @@ module Scroll : sig
       and [scroll_region_end] plus a margin of [start_margin] or [end_margin]
       respectively. *)
   val is_in_region
-    :  start_margin        : int
-    -> end_margin          : int
-    -> scroll_region_start : int
-    -> scroll_region_end   : int
-    -> elem_start          : int
-    -> elem_end            : int
+    :  start_margin        : float
+    -> end_margin          : float
+    -> scroll_region_start : float
+    -> scroll_region_end   : float
+    -> elem_start          : float
+    -> elem_end            : float
     -> bool
 
   (** [get_position] returns the position of the element with start position [elem_start]
       relative to the start of the scroll region as specified by [scroll_region_start] *)
   val get_position
-    :  scroll_region_start : int
-    -> elem_start          : int
-    -> int
+    :  scroll_region_start : float
+    -> elem_start          : float
+    -> float
 end
 
 (** [move_focus] gives the next element starting from the given key in the given direction

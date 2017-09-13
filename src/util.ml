@@ -8,24 +8,25 @@ end
 
 module Margin = struct
   type t =
-    { top : int
-    ; left : int
-    ; bottom : int
-    ; right : int
+    { top    : float
+    ; left   : float
+    ; bottom : float
+    ; right  : float
     }
   [@@deriving fields, compare, sexp_of]
 
   let uniform margin = { top = margin; left = margin; bottom = margin; right = margin }
 
-  let none = uniform 0
+  let none = uniform 0.
 
-  let create ?(top=0) ?(left=0) ?(bottom=0) ?(right=0) () = { top; left; bottom; right }
+  let create ?(top=0.) ?(left=0.) ?(bottom=0.) ?(right=0.) () =
+    { top; left; bottom; right }
 
-  let adjust ?(top=0) ?(left=0) ?(bottom=0) ?(right=0) t =
-    { top    = t.top    + top
-    ; left   = t.left   + left
-    ; bottom = t.bottom + bottom
-    ; right  = t.right  + right
+  let adjust ?(top=0.) ?(left=0.) ?(bottom=0.) ?(right=0.) t =
+    { top    = t.top    +. top
+    ; left   = t.left   +. left
+    ; bottom = t.bottom +. bottom
+    ; right  = t.right  +. right
     }
 end
 
@@ -46,10 +47,11 @@ module Float_type = struct
 
   let compute_offset t ~get_float_elem_size =
     match t with
-    | None -> 0
-    | Edge -> Option.value (get_float_elem_size ()) ~default:0
+    | None -> 0.
+    | Edge -> Option.value (get_float_elem_size ()) ~default:0.
     | Px_from_edge px ->
-      Option.value_map (get_float_elem_size ()) ~f:(fun size -> size + px) ~default:0
+      Option.value_map (get_float_elem_size ()) ~f:(fun size -> size +. Float.of_int px)
+        ~default:0.
 
   let is_floating = function
     | None -> false
@@ -80,8 +82,10 @@ module Scroll = struct
   end
 
   let scroll ?(in_=Scroll_region.Window) (dir:Dir.t) shift =
-    if shift <> 0
-    then (
+    if Float.equal shift 0.
+    then `Didn't_scroll
+    else (
+      let shift = Float.iround_nearest_exn shift in
       begin
         match in_, dir with
         | Window    , Horizontal -> Dom_html.window##scrollBy shift 0
@@ -91,30 +95,29 @@ module Scroll = struct
       end;
       `Scrolled
     )
-    else `Didn't_scroll
   ;;
 
   let adjust_margins ~start_margin ~end_margin ~scroll_region_start ~scroll_region_end
         ~elem_start ~elem_end =
     let unused_viewport_space =
-      (scroll_region_end - scroll_region_start) - (elem_end - elem_start)
+      (scroll_region_end -. scroll_region_start) -. (elem_end -. elem_start)
     in
-    let total_margin = start_margin + end_margin in
-    let scale_down m = m * unused_viewport_space / total_margin in
-    if unused_viewport_space < 0
-    then (0, 0)
-    else if unused_viewport_space < total_margin
+    let total_margin = start_margin +. end_margin in
+    let scale_down m = m *. unused_viewport_space /. total_margin in
+    if Float.is_negative unused_viewport_space
+    then (0., 0.)
+    else if Float.(<) unused_viewport_space total_margin
     then (scale_down start_margin, scale_down end_margin)
     else (start_margin, end_margin)
 
   let overflow_past_start ~scroll_region_start ~start_margin ~elem_start =
-    let start_boundary = scroll_region_start + start_margin in
-    Option.some_if (elem_start < start_boundary) (elem_start - start_boundary)
+    let start_boundary = scroll_region_start +. start_margin in
+    Option.some_if (Float.(<) elem_start start_boundary) (elem_start -. start_boundary)
   ;;
 
   let overflow_past_end ~scroll_region_end ~end_margin ~elem_end =
-    let end_boundary = scroll_region_end - end_margin in
-    Option.some_if (elem_end > end_boundary) (elem_end - end_boundary)
+    let end_boundary = scroll_region_end -. end_margin in
+    Option.some_if (Float.(>) elem_end end_boundary) (elem_end -. end_boundary)
   ;;
 
   let scroll_into_region ?in_ dir ~start_margin ~end_margin ~scroll_region_start
@@ -131,17 +134,17 @@ module Scroll = struct
     in
     let shift =
       match start_overflow, end_overflow with
-      | None, None          ->  0
+      | None, None          ->  0.
       | Some shift, None
       | Some shift, Some _  -> shift
       | None, Some shift    ->
         (* Do not shift element start past the start margin *)
         let excess_shift =
           overflow_past_start ~scroll_region_start ~start_margin
-            ~elem_start:(elem_start - shift)
-          |> Option.value ~default:0
+            ~elem_start:(elem_start -. shift)
+          |> Option.value ~default:0.
         in
-        shift + excess_shift
+        shift +. excess_shift
     in
     scroll ?in_ dir shift
   ;;
@@ -156,21 +159,21 @@ module Scroll = struct
     Option.is_none (overflow_past_end ~scroll_region_end ~end_margin ~elem_end)
   ;;
 
-  let get_elem_start ~scroll_region_start ~position = scroll_region_start + position
-  let get_position ~scroll_region_start ~elem_start = elem_start - scroll_region_start
+  let get_elem_start ~scroll_region_start ~position = scroll_region_start +. position
+  let get_position ~scroll_region_start ~elem_start = elem_start -. scroll_region_start
 
   let scroll_to_position ?in_ dir ~position ~scroll_region_start ~elem_start =
     let target_elem_start = get_elem_start ~scroll_region_start ~position in
-    let shift = elem_start - target_elem_start in
+    let shift = elem_start -. target_elem_start in
     scroll ?in_ dir shift
   ;;
 
   let scroll_to_position_and_into_region ?in_ dir ~position ~start_margin ~end_margin
         ~scroll_region_start ~scroll_region_end ~elem_start ~elem_end =
     let target_elem_start = get_elem_start ~scroll_region_start ~position in
-    let shift = elem_start - target_elem_start in
+    let shift = elem_start -. target_elem_start in
     let scroll_to_position = scroll ?in_ dir shift in
-    let target_elem_end = target_elem_start + elem_end - elem_start in
+    let target_elem_end = target_elem_start +. elem_end -. elem_start in
     let scroll_into_region =
       scroll_into_region ?in_ dir ~start_margin ~end_margin ~scroll_region_start
         ~scroll_region_end ~elem_start:target_elem_start ~elem_end:target_elem_end

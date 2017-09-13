@@ -10,8 +10,9 @@ module Interval = struct
 end
 
 module Measurements = struct
-  type t = { list_rect: int Js_misc.Rect.t
-           ; view_rect: int Js_misc.Rect.t }
+  type t = { list_rect: float Js_misc.Rect.t
+           ; view_rect: float Js_misc.Rect.t }
+  [@@deriving compare, sexp]
 end
 
 module type Key = sig
@@ -52,11 +53,11 @@ module type S = sig
   module Height_cache : sig
     type t [@@deriving compare, sexp_of]
 
-    val empty : height_guess:int -> t
+    val empty : height_guess:float -> t
 
     (** [height t key] will return the actual height of [key] if available, otherwise it
         returns [height_guess] *)
-    val height : t -> Key.t -> int
+    val height : t -> Key.t -> float
   end
 
   (** Meant to be stored in the derived model *)
@@ -68,18 +69,18 @@ module type S = sig
     -> measurements:Measurements.t option Incr.t
     -> 'v t Incr.t
 
-  val find_by_position : _ t -> position:int -> Key.t option
+  val find_by_position : _ t -> position:float -> Key.t option
 
   (* [find_by_relative_position t key ~offset] returns the key at a distance of
      approximately [offset] away from [key], preferring closer elements to farther ones.
      If the offset extends past the end of the list, the end key is returned instead. *)
-  val find_by_relative_position : _ t -> Key.t -> offset:int -> Key.t option
+  val find_by_relative_position : _ t -> Key.t -> offset:float -> Key.t option
 
   (** Meant for rendering, apps should normally use Incr.Map.mapi' on this *)
   val rows_to_render : 'v t -> 'v Key.Map.t
 
   (** (top, bottom) spacer pixel heights to put the rendered rows in the right place *)
-  val spacer_heights : _ t Incr.t -> (int * int) Incr.t
+  val spacer_heights : _ t Incr.t -> (float * float) Incr.t
 
   (** Scroll the view to the row with the given key, scrolling the minimum amount possible
       while still being [(top|bottom)_margin] pixels away from the top and bottom of the
@@ -90,24 +91,24 @@ module type S = sig
   val scroll_into_scroll_region
     : ?in_           : Scroll_region.t
     -> _ t
-    -> top_margin    : int
-    -> bottom_margin : int
+    -> top_margin    : float
+    -> bottom_margin : float
     -> key           : Key.t
     -> Scroll_result.t
 
   val scroll_to_position
     :  ?in_     : Scroll_region.t
     -> _ t
-    -> position : int
+    -> position : float
     -> key      : Key.t
     -> Scroll_result.t
 
   val scroll_to_position_and_into_region
     : ?in_ : Scroll_region.t
     -> _ t
-    -> position      : int
-    -> top_margin    : int
-    -> bottom_margin : int
+    -> position      : float
+    -> top_margin    : float
+    -> bottom_margin : float
     -> key           : Key.t
     -> Scroll_result.t
 
@@ -116,20 +117,20 @@ module type S = sig
 
   val is_in_region
     :  _ t
-    -> top_margin    : int
-    -> bottom_margin : int
+    -> top_margin    : float
+    -> bottom_margin : float
     -> key           : Key.t
     -> bool option
 
   val get_position
     :  _ t
     -> key : Key.t
-    -> int option
+    -> float option
 
   val get_top_and_bottom
     :  _ t
     -> key : Key.t
-    -> (int * int) option
+    -> (float * float) option
 
   (** [measure_heights_simple] updates a height cache by measuring the rendered elements,
       relying on the app to provide a function for finding and measuring the element for a
@@ -139,7 +140,7 @@ module type S = sig
   *)
   val measure_heights_simple
     :  _ t
-    -> measure:(Key.t -> int option)
+    -> measure:(Key.t -> float option)
     -> Height_cache.t
 
   (** [measure_heights] is like [measure_heights_simple], but allows the app to use the
@@ -155,7 +156,7 @@ module type S = sig
   val measure_heights
     :  _ t
     -> measure_row:(Key.t -> 'm option)
-    -> get_row_height:(prev:'m option -> curr:'m option -> next:'m option -> int option)
+    -> get_row_height:(prev:'m option -> curr:'m option -> next:'m option -> float option)
     -> Height_cache.t
 end
 

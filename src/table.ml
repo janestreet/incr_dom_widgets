@@ -43,8 +43,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   module Visibility_info = struct
     type t =
-      { tbody_rect : int Js_misc.Rect.t
-      ; view_rect  : int Js_misc.Rect.t
+      { tbody_rect : float Js_misc.Rect.t
+      ; view_rect  : float Js_misc.Rect.t
       } [@@deriving compare, sexp, fields]
   end
 
@@ -371,7 +371,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let get_top_margin_offset (m : Model.t) =
     let get_float_elem_size () =
       Option.map (Dom_html.getElementById_opt m.thead_html_id)
-        ~f:(fun el -> Js_misc.viewport_rect_of_element el |> Js_misc.Rect.height)
+        ~f:(fun el -> Js_misc.viewport_rect_of_element el |> Js_misc.Rect.float_height)
     in
     Float_type.compute_offset m.float_header ~get_float_elem_size
   ;;
@@ -379,7 +379,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   (* Possible offset due to floating first column *)
   let get_left_margin_offset (m : Model.t) (d : _ Derived_model.t) ~is_floating_col =
     if is_floating_col
-    then 0
+    then 0.
     else (
       let get_float_elem_size () =
         let open Option.Let_syntax in
@@ -387,7 +387,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         let%map el =
           Dom_html.getElementById_opt (Html_id.column_header_cell m.id first_column_id)
         in
-        Js_misc.viewport_rect_of_element el |> Js_misc.Rect.width
+        Js_misc.viewport_rect_of_element el |> Js_misc.Rect.float_width
       in
       Float_type.compute_offset m.float_first_col ~get_float_elem_size
     )
@@ -416,17 +416,17 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       then (Js_misc.Rect.left cell_rect, Js_misc.Rect.right cell_rect, false)
       else begin
         let left = Js_misc.Rect.left tbody_rect in
-        let width = Js_misc.Rect.width cell_rect in
+        let width = Js_misc.Rect.float_width cell_rect in
         let is_currently_floating =
           match Float_type.px_from_edge m.float_first_col with
           | None    -> false
           | Some px ->
-            let float_pos_left  = view_rect.left + px in
-            let float_pos_right = float_pos_left + width in
-            tbody_rect.left  <= float_pos_left &&
-            tbody_rect.right >= float_pos_right
+            let float_pos_left  = view_rect.left +. Float.of_int px in
+            let float_pos_right = float_pos_left +. width in
+            Float.(<=) tbody_rect.left float_pos_left &&
+            Float.(>=) tbody_rect.right float_pos_right
         in
-        left, left + width, is_currently_floating
+        left, left +. width, is_currently_floating
       end
     in
     let f =
@@ -445,7 +445,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let f =
       Row_view.scroll_into_scroll_region
         ?in_:d.scroll_region
-        ~top_margin:(m.scroll_margin.top + top_margin_offset)
+        ~top_margin:(m.scroll_margin.top +. top_margin_offset)
         ~bottom_margin:m.scroll_margin.bottom
     in
     Option.value (call_row_scroll_function m d ~row_id ~f) ~default:`Didn't_scroll
@@ -458,7 +458,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       Scroll.scroll_into_region
         ?in_:d.scroll_region
         Horizontal
-        ~start_margin:(m.scroll_margin.left + left_margin_offset)
+        ~start_margin:(m.scroll_margin.left +. left_margin_offset)
         ~end_margin:m.scroll_margin.right
     in
     let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
@@ -480,7 +480,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         Row_view.scroll_to_position_and_into_region
           ?in_:d.scroll_region
           ~position
-          ~top_margin:(m.scroll_margin.top + top_margin_offset)
+          ~top_margin:(m.scroll_margin.top +. top_margin_offset)
           ~bottom_margin:m.scroll_margin.bottom
     in
     Option.value (call_row_scroll_function m d ~row_id ~f) ~default:`Didn't_scroll
@@ -504,7 +504,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ?in_:d.scroll_region
         Horizontal
         ~position
-        ~start_margin:(m.scroll_margin.left + left_margin_offset)
+        ~start_margin:(m.scroll_margin.left +. left_margin_offset)
         ~end_margin:m.scroll_margin.right
     in
     let f, f_if_currently_floating =
@@ -522,7 +522,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let f =
       let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
       Row_view.is_in_region
-        ~top_margin:(scroll_margin.top + top_margin_offset)
+        ~top_margin:(scroll_margin.top +. top_margin_offset)
         ~bottom_margin:scroll_margin.bottom
     in
     Option.join (call_row_scroll_function m d ~row_id ~f)
@@ -535,7 +535,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let f =
       let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
       Scroll.is_in_region
-        ~start_margin:(scroll_margin.left + left_margin_offset)
+        ~start_margin:(scroll_margin.left +. left_margin_offset)
         ~end_margin:scroll_margin.right
     in
     let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
@@ -567,7 +567,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let is_floating_col = is_floating_col d column_id in
     let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end =
       let left  = Scroll.get_position ~scroll_region_start ~elem_start in
-      left, left + elem_end - elem_start
+      left, left +. elem_end -. elem_start
     in
     call_col_scroll_function m ~column_id ~f ~is_floating_col
   ;;
@@ -602,14 +602,16 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       let%bind visibility_info = m.visibility_info and focus_row = m.focus_row in
       let%bind focus_key = current_key m d ~row_id:focus_row in
       let focus_height = Row_view.Height_cache.height m.height_cache focus_key in
-      let scroll_height = Js_misc.Rect.height visibility_info.view_rect in
+      let scroll_height = Js_misc.Rect.float_height visibility_info.view_rect in
       let top_margin_offset = get_top_margin_offset m in
       let mult =
         match dir with
-        | Prev -> -1
-        | Next ->  1
+        | Prev -> -1.
+        | Next ->  1.
       in
-      let offset = mult * (scroll_height - focus_height - top_margin_offset) in
+      let offset =
+        mult *. (scroll_height -. focus_height -. top_margin_offset)
+      in
       Row_view.find_by_relative_position d.row_view focus_key ~offset
     in
     match new_focus_row with
@@ -645,8 +647,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let find_row_by_position (m : Model.t) (d : _ Derived_model.t) position =
     let open Option.Let_syntax in
     let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
-    let position = position - Js_misc.Rect.top tbody_rect in
-    if position < 0
+    let position = position -. Js_misc.Rect.top tbody_rect in
+    if Float.is_negative position
     then `Before
     else (
       match Row_view.find_by_position d.row_view ~position with
@@ -679,7 +681,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     | Finished      false  -> Some `After
     | Finished      true   ->
       let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
-      if position < Js_misc.Rect.left tbody_rect
+      if Float.(<) position (Js_misc.Rect.left tbody_rect)
       then `Before
       else `After
   ;;
@@ -746,17 +748,17 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         Option.map curr ~f:(fun (curr_top, curr_bottom) ->
           let with_top_margin =
             Option.map (Option.map prev ~f:Tuple2.get2)
-              ~f:(fun prev_bottom -> curr_bottom - prev_bottom)
+              ~f:(fun prev_bottom -> curr_bottom -. prev_bottom)
           in
           let with_bottom_margin =
             Option.map (Option.map next ~f:Tuple2.get1)
-              ~f:(fun next_top -> next_top - curr_top)
+              ~f:(fun next_top -> next_top -. curr_top)
           in
           match with_top_margin, with_bottom_margin with
-          | Some h1, Some h2 -> (h1 + h2) / 2
+          | Some h1, Some h2 -> (h1 +. h2) /. 2.
           | Some h, None
           | None, Some h     -> h
-          | None, None       -> curr_bottom - curr_top
+          | None, None       -> curr_bottom -. curr_top
         )
       )
 
@@ -773,7 +775,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     in
     let view_rect =
       match scroll_region with
-      | Window     -> Js_misc.client_rect ()
+      | Window     -> Js_misc.Rect.map (Js_misc.client_rect ()) ~f:Float.of_int
       | Element el -> Js_misc.client_rect_of_element el
     in
     { Visibility_info.
@@ -794,10 +796,13 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let px_of_int x =
     Int.to_string x ^ "px"
 
+  let px_of_float x =
+    px_of_int (Float.iround_nearest_exn x)
+
   let spacer ~key =
     let id_attr = Attr.id (Html_id.spacer key) in
     stage (fun height ->
-      [Node.tr ~key [ id_attr; Attr.style [ "height", px_of_int height ]] []]
+      [Node.tr ~key [ id_attr; Attr.style [ "height", px_of_float height ]] []]
     )
 
   let sticky_pos side (pos:Float_type.t Incr.t) =

@@ -144,7 +144,7 @@ module type S = sig
       -> float_header:Float_type.t
       -> float_first_col:Float_type.t
       (** Estimated height of a normal row *)
-      -> height_guess:int
+      -> height_guess:float
       (** Id of the table.  This must be a fresh id - one that has not been passed to
           [Model.create] before - or behavior is undefined.  It maybe be useful to provide
           your own id here if you need access to the id before you create its associated
@@ -186,7 +186,7 @@ module type S = sig
       -> t
 
     (** Returns the bounding client rectangle of the table body. *)
-    val get_tbody_rect : t -> int Js_misc.Rect.t option
+    val get_tbody_rect : t -> float Js_misc.Rect.t option
   end
 
   module Derived_model : sig
@@ -255,7 +255,7 @@ module type S = sig
     -> Model.t
     -> _ Derived_model.t
     -> Row_id.t
-    -> position:int
+    -> position:float
     -> Scroll_result.t
 
   val scroll_col_to_position
@@ -263,14 +263,14 @@ module type S = sig
     -> Model.t
     -> _ Derived_model.t
     -> Column_id.t
-    -> position:int
+    -> position:float
     -> Scroll_result.t
 
   val scroll_focus_to_position
     :  ?keep_in_scroll_region:unit
     -> Model.t
     -> _ Derived_model.t
-    -> position:(int * int)
+    -> position:(float * float)
     -> Scroll_result.t
 
   (** Functions [*_is_in_scroll_region] and [get_*_position] return [None] if the
@@ -305,25 +305,25 @@ module type S = sig
     :  Model.t
     -> _ Derived_model.t
     -> Row_id.t
-    -> int option
+    -> float option
 
   val get_col_position
     :  Model.t
     -> _ Derived_model.t
     -> Column_id.t
-    -> int option
+    -> float option
 
   val get_focus_position
     :  Model.t
     -> _ Derived_model.t
-    -> int option * int option
+    -> float option * float option
 
   (** Returns the bounding client rectangle of the currently focused cell, if any.
       This only returns a value if both the focus row and focus column are set. *)
   val get_focus_rect
     :  Model.t
     -> _ Derived_model.t
-    -> int Js_misc.Rect.t option
+    -> float Js_misc.Rect.t option
 
   (** Finds the row id at a given vertical position on the page, or indicates that the
       position is before/after all the rows in the table.
@@ -331,7 +331,7 @@ module type S = sig
   val find_row_by_position
     :  Model.t
     -> _ Derived_model.t
-    -> int
+    -> float
     -> [ `Before | `At of Row_id.t | `After ] option
 
   (** Finds the column id at a given horizontal position on the page, or indicates that
@@ -341,7 +341,7 @@ module type S = sig
   val find_col_by_position
     :  Model.t
     -> _ Derived_model.t
-    -> int
+    -> float
     -> [ `Before | `At of Column_id.t | `After ] option
 
   (** Used for scrolling to rows/columns upon focusing them *)
