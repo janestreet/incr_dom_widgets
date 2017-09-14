@@ -29,5 +29,4 @@ module Default_sort_spec : sig
   include Table_intf.Sort_spec
     with module Sort_key := Sort_key
      and module Sort_dir := Sort_dir
-     and type t = Sort_key.t * Sort_dir.t
 end

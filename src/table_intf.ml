@@ -5,7 +5,7 @@ open! Import
 module type Sort_key = sig
   (** [t] is the type of the keys used to sort rows. Each row maps to a key of type [t]
       based on the contents of the row and the current column being sorted on. *)
-  type t [@@deriving sexp]
+  type t [@@deriving sexp, compare]
 end
 
 (** [Sort_dir] determines the different ways in which the rows can be sorted
@@ -17,15 +17,25 @@ module type Sort_dir = sig
       update the sort direction when a header is clicked on. *)
   val next : t option -> t option
 
-  (** [indicator] defines the symbol to display in each header (e.g. "▲" for ascending).
-      The header of the column currently sorted on in dir [sort_dir] will have indicator
-      [indicator (Some dir)]. All other headers will have indicator [indicator None]. *)
-  val indicator : t option -> string option
+  (** [indicator] and [class_] convert the sort direction and precedence of a column from
+      the sort criteria into a string symbol and a css class respectively in order to
+      display sort information in the table.
 
-  (** [class_] defines the css class of each header, to allow for additional style rules.
-      The header of the column currently sorted on in dir [sort_dir] will have class
-      [class_ (Some dir)]. All other headers will have class [class_ None]. *)
-  val class_ : t option -> string option
+      [indicator] returns a symbol that is displayed in the header of the corresponding
+      column, while [class_] returns a css class that is assigned to the header element.
+
+      The [precedence] is always a positive integer (i.e. it starts at 1, not 0).
+
+      A column that is not in the sort criteria is assigned an [indicator] and [class_] of
+      [None].
+
+      Examples of suitable indicators are:
+      - "▲"    (ascending with priority 1)
+      - "▲(2)" (ascending with priority 2)
+  *)
+
+  val indicator : t -> precedence:int -> string option
+  val class_    : t -> precedence:int -> string option
 end
 
 (** [Sort_spec] defines how rows are sorted in the table. *)
@@ -33,15 +43,28 @@ module type Sort_spec = sig
   module Sort_key : Sort_key
   module Sort_dir : Sort_dir
 
-  type t = (Sort_key.t * Sort_dir.t) [@@deriving sexp, compare]
+  (** [compare_keys] and [compare_rows_if_equal_keys] are comparison functions used to
+      compare rows in a table in order to sort them.
 
-  (** [compare] provides a comparison function between rows' [Sort_key.t] and [Row_id.t],
-      taking [Sort_dir.t] into account. This is used to sort rows of the table. *)
-  val compare
+      [compare_keys] compares two rows based on a single column in the table's sort
+      criteria.
+
+      [compare_rows_if_equal_keys] compares two rows based on their row ids, and is only
+      called if the calls to [compare_key] for all columns in the table's sort criteria
+      return 0. The sort direction is determined by the first column in the sort criteria.
+  *)
+
+  val compare_keys
+    :  Sort_dir.t
+    -> Sort_key.t
+    -> Sort_key.t
+    -> int
+
+  val compare_rows_if_equal_keys
     :  cmp_row_id:('row_id -> 'row_id -> int)
-    -> (Sort_key.t * 'row_id)
-    -> (Sort_key.t * 'row_id)
     -> Sort_dir.t
+    -> 'row_id
+    -> 'row_id
     -> int
 end
 
@@ -66,12 +89,26 @@ module type S = sig
   module Sort_key = Sort_spec.Sort_key
   module Sort_dir = Sort_spec.Sort_dir
 
+  (** A ['a Sort_criteria.t] specifies a list of columns by which to sort the rows of a
+      table, in order of precedence from highest to lowest. Each column's sort criteria is
+      made up of a direction and a value of type ['a], which varies as the sort criteria
+      goes through several rounds of processing. *)
   module Sort_criteria : sig
-    type t =
-      { column_id : Column_id.t
-      ; dir : Sort_dir.t
-      }
-    [@@deriving fields, compare, sexp]
+    module By_column : sig
+      type 'a t =
+        { column : 'a
+        ; dir    : Sort_dir.t
+        }
+      [@@deriving fields, compare, sexp]
+    end
+
+    type 'a t = 'a By_column.t list [@@deriving compare, sexp]
+  end
+
+  module Base_sort_criteria : sig
+    type t = Column_id.t Sort_criteria.By_column.t list [@@deriving compare, sexp]
+
+    val none : t
   end
 
   module Html_id : sig
@@ -112,21 +149,21 @@ module type S = sig
   module Key : sig
     type t [@@deriving sexp]
 
-    val sort_spec : t -> Sort_spec.t option
-    val sort_key  : t -> Sort_key.t  option
-    val sort_dir  : t -> Sort_dir.t  option
-    val row_id    : t -> Row_id.t
+    val sort_criteria : t -> Sort_key.t option Lazy.t Sort_criteria.t
+    val sort_keys     : t -> Sort_key.t option Lazy.t list
+    val sort_dirs     : t -> Sort_dir.t list
+    val row_id        : t -> Row_id.t
 
     include Comparable.S with type t := t
 
     val create
-      :  Sort_spec.t option
+      :  Sort_key.t option Lazy.t Sort_criteria.t
       -> Row_id.t
       -> t
 
     (** Sorts a map of rows in the same way as using the table's built in sort *)
     val sort
-      :  ('a Column.t * Sort_dir.t) option
+      :  'a Column.t Sort_criteria.t
       -> rows:'a Row_id.Map.t Incr.t
       -> 'a Map.t Incr.t
   end
@@ -153,7 +190,7 @@ module type S = sig
       (** The column and sort direction that the table should be (initially) sorted by.
           Sorting can be changed later via clicking on column headers. If [initial_sort]
           is not specified, then the table is sorted by [Row_id]. *)
-      -> ?initial_sort:Sort_criteria.t
+      -> ?initial_sort:Base_sort_criteria.t
       -> ?initial_focus_row:Row_id.t
       -> ?initial_focus_col:Column_id.t
       -> unit
@@ -164,25 +201,35 @@ module type S = sig
     val focus_row : t -> Row_id.t option
     val focus_col : t -> Column_id.t option
 
-    val sort_criteria : t -> Sort_criteria.t option
-    val sort_column : t -> Column_id.t option
-    val sort_dir : t -> Sort_dir.t option
+    val sort_criteria : t -> Base_sort_criteria.t
+    val sort_columns  : t -> Column_id.t list
+    val sort_dirs     : t -> Sort_dir.t list
 
     val scroll_margin : t -> Margin.t
 
-    val set_sort_criteria : t -> Sort_criteria.t option -> t
+    val set_sort_criteria : t -> Base_sort_criteria.t -> t
 
     val set_float_header : t -> Float_type.t -> t
 
     (** [cycle_sorting] computes and sets new sort criteria based on the current criteria.
-        If the given column id is equal to the current sort column, the sort direction is
-        updated by calling [next_dir] on the current sort direction.  Otherwise, the sort
-        column is set to the given column id, and the sort direction is computed by
-        calling [next_dir] on [None]. *)
+        If the given column id already exists in the sort criteria, the column's sort
+        direction is updated by calling [next_dir] on its current sort direction.
+        Otherwise, the sort direction is computed by calling [next_dir] on [None]. If the
+        new direction is [None], the column id is removed from the sort criteria.
+
+        If [keep_existing_cols] is passed in as an argument, all existing column ids are
+        kept in the sort criteria, and the given column id is added or promoted to the
+        front of the sort criteria list (i.e. given the highest precedence).
+
+        If [keep_existing_cols] is not passed in, all column ids apart from the given one
+        are removed from the sort criteria.
+    *)
+
     val cycle_sorting
-      :  t
+      :  ?keep_existing_cols : unit
+      -> t
       -> Column_id.t
-      -> next_dir:(Sort_dir.t option -> Sort_dir.t option)
+      -> next_dir            : (Sort_dir.t option -> Sort_dir.t option)
       -> t
 
     (** Returns the bounding client rectangle of the table body. *)
@@ -199,8 +246,8 @@ module type S = sig
       -> columns:(Column_id.t * 'a Column.t) list Incr.t
       -> 'a t Incr.t
 
-    val sorted_rows : 'a t -> 'a Key.Map.t
-    val sort_column : 'a t -> 'a Column.t option
+    val sorted_rows   : 'a t -> 'a Key.Map.t
+    val sort_criteria : 'a t -> 'a Column.t Sort_criteria.t
     val scroll_region : _ t -> Scroll_region.t option
   end
 
@@ -218,11 +265,10 @@ module type S = sig
     val page_focus_row : Focus_dir.t -> t
   end
 
-  (** [current_key m d row_id] returns [row_id]'s [Key.t] associated with the current sort
-      criteria of [m]. Returns [None] if [row_id] does not exist in [d] *)
+  (** [current_key d row_id] returns [row_id]'s [Key.t] associated with the current sort
+      criteria of [d]. Returns [None] if [row_id] does not exist in [d] *)
   val current_key
-    :  Model.t
-    -> _ Derived_model.t
+    :  _ Derived_model.t
     -> row_id:Row_id.t
     -> Key.t option
 
@@ -302,8 +348,7 @@ module type S = sig
     -> bool option
 
   val get_row_position
-    :  Model.t
-    -> _ Derived_model.t
+    :  _ Derived_model.t
     -> Row_id.t
     -> float option
 

@@ -19,10 +19,42 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   module Sort_dir  = Sort_spec.Sort_dir
 
   module Sort_criteria = struct
-    type t =
-      { column_id : Column_id.t
-      ; dir : Sort_dir.t
-      } [@@deriving fields, compare, sexp]
+    module By_column = struct
+      type 'a t =
+        { column : 'a
+        ; dir    : Sort_dir.t
+        } [@@deriving fields, compare, sexp]
+    end
+
+    type 'a t = 'a By_column.t list [@@deriving compare, sexp]
+
+    let map : 'a t -> f:('a -> 'b) -> 'b t = fun t ~f ->
+      List.map t ~f:(fun (by_column:_ By_column.t) ->
+        { by_column with column = f by_column.column }
+      )
+
+    let filter_map : 'a t -> f:('a -> 'b option) -> 'b t = fun t ~f ->
+      List.filter_map t ~f:(fun (by_column:_ By_column.t) ->
+        Option.map (f by_column.column) ~f:(fun column -> { by_column with column })
+      )
+  end
+
+  module Base_sort_criteria = struct
+    type t = Column_id.t Sort_criteria.By_column.t list [@@deriving compare, sexp]
+
+    let none = []
+
+    let find_precedence_and_dir t target =
+      List.find_mapi t ~f:(fun i { Sort_criteria.By_column. column; dir } ->
+        Option.some_if (Column_id.equal column target) (i + 1, dir)
+      )
+
+    let remove t target =
+      List.filter t ~f:(fun { Sort_criteria.By_column. column; dir = _ } ->
+        not (Column_id.equal column target)
+      )
+
+    let add_to_front t column dir = { Sort_criteria.By_column. column; dir } :: t
   end
 
   module Column = struct
@@ -51,12 +83,12 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   module Key = struct
     module T = struct
       type t =
-        { sort_spec: Sort_spec.t option
-        ; row_id: Row_id.t
+        { sort_criteria : Sort_key.t option Lazy.t Sort_criteria.t
+        ; row_id        : Row_id.t
         } [@@deriving sexp, fields]
 
-      let sort_key t = Option.map t.sort_spec ~f:fst
-      let sort_dir t = Option.map t.sort_spec ~f:snd
+      let sort_keys t = List.map t.sort_criteria ~f:Sort_criteria.By_column.column
+      let sort_dirs t = List.map t.sort_criteria ~f:Sort_criteria.By_column.dir
 
       (** The comparison function here is written so that any two keys with the same
           sort_dir sort according to that sort_dir; but keys with different sort_dirs just
@@ -64,43 +96,57 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           used by all the different sorting situations, without needing to change
           comparators. *)
       let compare t1 t2 =
-        match t1.sort_spec, t2.sort_spec with
-        | None, None -> Row_id.compare t1.row_id t2.row_id
-        | Some _, None -> -1
-        | None, Some _ -> 1
-        | Some spec1, Some spec2 ->
+        match t1.sort_criteria, t2.sort_criteria with
+        | []  , []   -> Row_id.compare t1.row_id t2.row_id
+        | _::_, []   -> -1
+        | []  , _::_ ->  1
+        | b::_, _::_ ->
+          let module B = Sort_criteria.By_column in
+          let compare_by_col =
+            Comparable.lexicographic
+              [ (fun b1 b2 -> Sort_dir.compare b1.B.dir b2.B.dir)
+              ; (fun b1 b2 ->
+                   match force b1.B.column, force b2.B.column with
+                   | None   , None    ->  0
+                   | Some _ , None    -> -1
+                   | None   , Some _  ->  1
+                   | Some k1, Some k2 -> Sort_spec.compare_keys b1.B.dir k1 k2
+                )
+              ]
+          in
+          let compare_if_equal_keys =
+            Sort_spec.compare_rows_if_equal_keys ~cmp_row_id:Row_id.compare b.B.dir
+          in
           Comparable.lexicographic
-            [ (fun (_key1, dir1) (_key2, dir2) -> Sort_dir.compare dir1 dir2)
-            ; (fun (key1, dir1) (key2, _dir2) ->
-                 Sort_spec.compare
-                   ~cmp_row_id:Row_id.compare
-                   (key1, t1.row_id)
-                   (key2, t2.row_id)
-                   dir1
-              )
+            [ (fun t1 t2 -> List.compare compare_by_col t1.sort_criteria t2.sort_criteria)
+            ; (fun t1 t2 -> compare_if_equal_keys t1.row_id t2.row_id)
             ]
-            spec1
-            spec2
+            t1 t2
 
-      let create sort_spec row_id = { sort_spec; row_id }
+      let create sort_criteria row_id = { sort_criteria; row_id }
     end
     include T
     include Comparable.Make(T)
 
-    let sort spec ~(rows : _ Row_id.Map.t Incr.t) =
-      let sort_spec row =
-        Option.bind spec ~f:(fun (column, sort_dir) ->
-          Option.map (Column.sort_by column) ~f:(fun sort_by -> sort_by row, sort_dir)
-        )
+    let convert_sort_criteria sort_criteria row =
+      Sort_criteria.map sort_criteria ~f:(fun column ->
+        lazy (Option.map (Column.sort_by column) ~f:(fun sort_by -> sort_by row))
+      )
+
+    let sort sort_criteria ~(rows : _ Row_id.Map.t Incr.t) =
+      let create_key row_id data =
+        create (convert_sort_criteria sort_criteria data) row_id
       in
       Incr.Map.unordered_fold rows
         ~init:Map.empty
         ~add:(fun ~key:row_id ~data acc ->
-          let key = create (sort_spec data) row_id in
-          Map.add acc ~key ~data)
+          let key = create_key row_id data in
+          Map.add acc ~key ~data
+        )
         ~remove:(fun ~key:row_id ~data acc ->
-          let key = create (sort_spec data) row_id in
-          Map.remove acc key)
+          let key = create_key row_id data in
+          Map.remove acc key
+        )
     ;;
   end
 
@@ -142,7 +188,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
              (** UI state. Changed by user during app usage *)
              ; focus_row: Row_id.t option
              ; focus_col: Column_id.t option
-             ; sort_criteria: Sort_criteria.t option
+             ; sort_criteria: Base_sort_criteria.t
              (** Info measured from render. Changes each render. *)
              ; height_cache: Row_view.Height_cache.t
              ; visibility_info: Visibility_info.t option
@@ -155,7 +201,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     [@@deriving fields, compare, sexp_of]
 
     let create ~scroll_margin ~scroll_region ~float_header ~float_first_col ~height_guess
-          ?id ?initial_sort ?initial_focus_row ?initial_focus_col () =
+          ?id ?(initial_sort=Base_sort_criteria.none) ?initial_focus_row
+          ?initial_focus_col () =
       let id =
         match id with
         | Some id -> id
@@ -178,24 +225,28 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; column_header_html_id = Html_id.column_header id
       }
 
-    let sort_dir t = Option.map t.sort_criteria ~f:Sort_criteria.dir
-    let sort_column t = Option.map t.sort_criteria ~f:Sort_criteria.column_id
+    let sort_dirs    t = List.map t.sort_criteria ~f:Sort_criteria.By_column.dir
+    let sort_columns t = List.map t.sort_criteria ~f:Sort_criteria.By_column.column
 
     let set_sort_criteria = Field.fset Fields.sort_criteria
 
     let set_float_header = Field.fset Fields.float_header
 
-    let cycle_sorting t column_id ~next_dir =
-      let get_sort_criteria prev_dir =
-        Option.map (next_dir prev_dir) ~f:(fun dir -> { Sort_criteria. dir; column_id })
+    let cycle_sorting ?keep_existing_cols t column_id ~next_dir =
+      let prev_dir =
+        Base_sort_criteria.find_precedence_and_dir t.sort_criteria column_id
+        |> Option.map ~f:snd
+      in
+      let cleared_sort_criteria =
+        match keep_existing_cols with
+        | None    -> Base_sort_criteria.none
+        | Some () -> Base_sort_criteria.remove t.sort_criteria column_id
       in
       let sort_criteria =
-        match t.sort_criteria with
-        | None -> get_sort_criteria None
-        | Some { dir = prev_dir; column_id = prev_column_id } ->
-          if Column_id.equal prev_column_id column_id
-          then (get_sort_criteria (Some prev_dir))
-          else (get_sort_criteria None)
+        match next_dir prev_dir with
+        | None     -> cleared_sort_criteria
+        | Some dir ->
+          Base_sort_criteria.add_to_front cleared_sort_criteria column_id dir
       in
       { t with sort_criteria }
 
@@ -205,15 +256,15 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   module Derived_model = struct
     type 'a t =
-      { rows: 'a Row_id.Map.t
-      ; sorted_rows: 'a Key.Map.t
-      ; columns: (Column_id.t * 'a Column.t) Int.Map.t
-      ; column_num_lookup: int Column_id.Map.t
-      ; sort_column: 'a Column.t option
-      ; row_view: 'a Row_view.t
-      ; scroll_region : Scroll_region.t option
-      ; has_col_groups : bool
-      ; floating_col : Column_id.t option
+      { rows              : 'a Row_id.Map.t
+      ; sorted_rows       : 'a Key.Map.t
+      ; columns           : (Column_id.t * 'a Column.t) Int.Map.t
+      ; column_num_lookup : int Column_id.Map.t
+      ; sort_criteria     : 'a Column.t Sort_criteria.t
+      ; row_view          : 'a Row_view.t
+      ; scroll_region     : Scroll_region.t option
+      ; has_col_groups    : bool
+      ; floating_col      : Column_id.t option
       } [@@deriving fields]
 
     let create m ~rows ~(columns : (Column_id.t * _ Column.t) list Incr.t) =
@@ -225,25 +276,19 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         in
         Scroll_region.of_id (Model.scroll_region m)
       in
-      let sort_column =
-        let%map column_id =
-          m >>| Model.sort_column |> cutoff [%compare: Column_id.t option]
+      let sort_criteria =
+        let%map sort_criteria =
+          m >>| Model.sort_criteria |> cutoff [%compare: Base_sort_criteria.t]
         and columns = columns
         in
-        Option.bind column_id ~f:(fun column_id ->
+        Sort_criteria.filter_map sort_criteria ~f:(fun column_id ->
           List.find_map columns ~f:(fun (id, c) ->
             if [%compare.equal:Column_id.t] id column_id
             then (Some c) else None
           )
         )
       in
-      let sorted_rows =
-        let%bind column = sort_column
-        and sort_dir = m >>| Model.sort_dir |> cutoff [%compare: Sort_dir.t option]
-        in
-        let sort_spec = Option.both column sort_dir in
-        Key.sort sort_spec ~rows
-      in
+      let sorted_rows = sort_criteria >>= Key.sort ~rows in
       let measurements =
         let%map visibility_info = m >>| Model.visibility_info in
         Option.map visibility_info
@@ -277,7 +322,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       and sorted_rows = sorted_rows
       and columns = columns
       and column_num_lookup = column_num_lookup
-      and sort_column = sort_column
+      and sort_criteria = sort_criteria
       and scroll_region = scroll_region
       and floating_col = floating_col
       and has_col_groups = has_col_groups
@@ -286,7 +331,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; sorted_rows
       ; columns
       ; column_num_lookup
-      ; sort_column
+      ; sort_criteria
       ; row_view
       ; scroll_region
       ; has_col_groups
@@ -311,18 +356,11 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     -> row:'a Incr.t
     -> Row_node_spec.t Incr.t
 
-  let current_key (m : Model.t) (d : _ Derived_model.t) ~row_id =
+  let current_key (d : _ Derived_model.t) ~row_id =
     let open Option.Let_syntax in
     let%map row = Row_id.Map.find d.rows row_id in
-    let sort_key =
-      Option.bind d.sort_column ~f:(fun column ->
-        Option.map (Column.sort_by column) ~f:(fun sort_by -> sort_by row)
-      )
-    in
-    let sort_spec = Option.both sort_key (Model.sort_dir m) in
-    Key.create
-      sort_spec
-      row_id
+    let sort_criteria = Key.convert_sort_criteria d.sort_criteria row in
+    Key.create sort_criteria row_id
   ;;
 
   let move_focus_row m (d : _ Derived_model.t) ~dir =
@@ -330,7 +368,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       let open Option.Let_syntax in
       let focus_key =
         let%bind row_id = m.Model.focus_row in
-        current_key m d ~row_id
+        current_key d ~row_id
       in
       let%map ({row_id; _}, _) = Util.move_focus d.sorted_rows focus_key dir in
       row_id
@@ -393,8 +431,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     )
   ;;
 
-  let call_row_scroll_function m d ~row_id ~f =
-    Option.map (current_key m d ~row_id) ~f:(fun key -> f d.row_view ~key)
+  let call_row_scroll_function d ~row_id ~f =
+    Option.map (current_key d ~row_id) ~f:(fun key -> f d.row_view ~key)
   ;;
 
   let is_floating_col (d : _ Derived_model.t) column_id =
@@ -448,7 +486,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ~top_margin:(m.scroll_margin.top +. top_margin_offset)
         ~bottom_margin:m.scroll_margin.bottom
     in
-    Option.value (call_row_scroll_function m d ~row_id ~f) ~default:`Didn't_scroll
+    Option.value (call_row_scroll_function d ~row_id ~f) ~default:`Didn't_scroll
   ;;
 
   let scroll_col_into_scroll_region (m:Model.t) (d:_ Derived_model.t) column_id =
@@ -483,7 +521,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           ~top_margin:(m.scroll_margin.top +. top_margin_offset)
           ~bottom_margin:m.scroll_margin.bottom
     in
-    Option.value (call_row_scroll_function m d ~row_id ~f) ~default:`Didn't_scroll
+    Option.value (call_row_scroll_function d ~row_id ~f) ~default:`Didn't_scroll
   ;;
 
   let scroll_col_to_position ?keep_in_scroll_region (m:Model.t) (d:_ Derived_model.t)
@@ -525,7 +563,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ~top_margin:(scroll_margin.top +. top_margin_offset)
         ~bottom_margin:scroll_margin.bottom
     in
-    Option.join (call_row_scroll_function m d ~row_id ~f)
+    Option.join (call_row_scroll_function d ~row_id ~f)
   ;;
 
   let col_is_in_scroll_region ?scroll_margin (m : Model.t) (d : _ Derived_model.t)
@@ -545,9 +583,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col
   ;;
 
-  let get_row_position (m:Model.t) (d:_ Derived_model.t) row_id =
+  let get_row_position (d:_ Derived_model.t) row_id =
     let f = Row_view.get_position in
-    Option.join (call_row_scroll_function m d ~row_id ~f)
+    Option.join (call_row_scroll_function d ~row_id ~f)
   ;;
 
   let get_col_position (m:Model.t) (d: _ Derived_model.t) column_id =
@@ -558,9 +596,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     call_col_scroll_function m ~column_id ~f ~is_floating_col
   ;;
 
-  let get_row_top_and_bottom (m:Model.t) (d:_ Derived_model.t) row_id =
+  let get_row_top_and_bottom (d:_ Derived_model.t) row_id =
     let f = Row_view.get_top_and_bottom in
-    Option.join (call_row_scroll_function m d ~row_id ~f)
+    Option.join (call_row_scroll_function d ~row_id ~f)
   ;;
 
   let get_col_left_and_right (m:Model.t) (d: _ Derived_model.t) column_id =
@@ -600,7 +638,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let open Option.Let_syntax in
     let new_focus_row =
       let%bind visibility_info = m.visibility_info and focus_row = m.focus_row in
-      let%bind focus_key = current_key m d ~row_id:focus_row in
+      let%bind focus_key = current_key d ~row_id:focus_row in
       let focus_height = Row_view.Height_cache.height m.height_cache focus_key in
       let scroll_height = Js_misc.Rect.float_height visibility_info.view_rect in
       let top_margin_offset = get_top_margin_offset m in
@@ -633,13 +671,13 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   let get_focus_position (m : Model.t) (d : _ Derived_model.t) =
     Option.bind m.focus_col ~f:(get_col_position m d),
-    Option.bind m.focus_row ~f:(get_row_position m d)
+    Option.bind m.focus_row ~f:(get_row_position   d)
   ;;
 
   let get_focus_rect (m : Model.t) (d : _ Derived_model.t) =
     let open Option.Let_syntax in
     let%bind row_id = m.focus_row and col_id = m.focus_col in
-    let%bind top , bottom = get_row_top_and_bottom m d row_id in
+    let%bind top , bottom = get_row_top_and_bottom   d row_id in
     let%map  left, right  = get_col_left_and_right m d col_id in
     { Js_misc.Rect. left; right; top; bottom }
   ;;
@@ -854,21 +892,26 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
            then [ first_cell_sticky_attr ]
            else [ default_sticky_attr    ]
          in
-         let dir =
-           Option.bind sort_criteria ~f:(fun { Sort_criteria. column_id; dir } ->
-             Option.some_if (Column_id.equal key column_id) dir
-           )
+         let precedence_and_dir =
+           Base_sort_criteria.find_precedence_and_dir sort_criteria key
          in
          let sort_direction_indicator =
-           match Sort_dir.indicator dir with
-           | None -> ""
+           let indicator =
+             Option.bind precedence_and_dir
+               ~f:(fun (precedence, dir) -> Sort_dir.indicator dir ~precedence)
+           in
+           match indicator with
+           | None     -> ""
            | Some ind -> sprintf " %s" ind
          in
          let sort_direction_classes =
-           List.filter_opt
-             [ Option.map dir ~f:(fun _ -> "sorted")
-             ; Sort_dir.class_ dir
-             ]
+           match precedence_and_dir with
+           | None                   -> []
+           | Some (precedence, dir) ->
+             List.filter_opt
+               [ Some "sorted"
+               ; Sort_dir.class_ dir ~precedence
+               ]
          in
          let on_click =
            Option.value_map
@@ -1053,31 +1096,35 @@ module Default_sort_spec = struct
       | Some Ascending  -> Some Descending
       | Some Descending -> None
 
-    let indicator =
-      Option.map ~f:(function
+    let indicator t ~precedence =
+      let dir_ind =
+        match t with
         | Ascending -> "▲"
         | Descending -> "▼"
-      )
+      in
+      let precedence_ind =
+        match precedence with
+        | 1 -> ""
+        | p -> sprintf "(%d)" p
+      in
+      Some (dir_ind ^ precedence_ind)
 
-    let class_ =
-      Option.map ~f:(function
-        | Ascending -> "sorted-asc"
-        | Descending -> "sorted-desc"
-      )
+    let class_ t ~precedence:_ =
+      match t with
+      | Ascending  -> Some "sorted-asc"
+      | Descending -> Some "sorted-desc"
 
     let sign = function
-      | Ascending -> 1
+      | Ascending  -> 1
       | Descending -> -1
   end
 
-  type t = Sort_key.t * Sort_dir.t [@@deriving sexp, compare]
-
-  let compare ~cmp_row_id (k1, r1) (k2, r2) dir =
+  let compare_keys dir k1 k2 =
     match (k1:Sort_key.t), (k2:Sort_key.t) with
     (** Always sort nulls last regardless of the sort direction *)
     | Null, _ | _, Null -> Sort_key.compare k1 k2
-    | _, _ ->
-      let dir_sign = Sort_dir.sign dir in
-      let key_cmp =  Sort_key.compare k1 k2 * dir_sign in
-      if key_cmp <> 0 then key_cmp else (cmp_row_id r1 r2 * dir_sign)
+    | _, _              -> Sort_key.compare k1 k2 * Sort_dir.sign dir
+
+  let compare_rows_if_equal_keys ~cmp_row_id dir r1 r2 =
+    cmp_row_id r1 r2 * Sort_dir.sign dir
 end
