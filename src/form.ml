@@ -468,7 +468,7 @@ module State = struct
         let witness = Type_equal.Id.create ~name:prefix sexp_of_opaque in
         let el_desc = Identified.create el_desc in
         let list_desc = Of_list.Of_list { witness; el_desc; list = forms; prefix; }  in
-        List witness, Map.add list_states ~key:(Type_equal.Id.uid witness) ~data:list_desc
+        List witness, Map.set list_states ~key:(Type_equal.Id.uid witness) ~data:list_desc
   ;;
 
   let create ?init {description; witness} =
@@ -828,7 +828,7 @@ module List = struct
       List.reduce_balanced ~f:merge_disjoint_maps_exn (cleared_list_map :: list_map_to_add)
       |> Option.value ~default:Type_equal.Id.Uid.Map.empty
     in
-    Map.add list_states ~key:(Type_equal.Id.uid list_id) ~data:(
+    Map.set list_states ~key:(Type_equal.Id.uid list_id) ~data:(
       Of_list.Of_list { list_state with list = states })
   ;;
 

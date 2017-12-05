@@ -296,7 +296,7 @@ module Make (Key : Key) = struct
       let float_approx_equal f1 f2 = Float.(abs (f1 - f2) < 0.001) in
       if Option.equal float_approx_equal (Map.find cache key) (Some height)
       then cache
-      else (Map.add cache ~key ~data:height)
+      else (Map.set cache ~key ~data:height)
 
   let measure_heights_simple t ~measure =
     let cache =

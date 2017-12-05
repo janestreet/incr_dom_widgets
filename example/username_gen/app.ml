@@ -218,7 +218,7 @@ let apply_action (action : Action.t) (model : Model.t) (_state : State.t) : Mode
       | None -> User_id.create (), Form.State.create User.form
       | Some idx -> idx, form_state
     in
-    let users = Map.add model.users ~key:idx ~data:user in
+    let users = Map.set model.users ~key:idx ~data:user in
     { model with users; form_state = next_form_state; }
   | Load_form u_opt ->
     let init = Option.map u_opt ~f:(fun (u,i) -> u, Some i) in

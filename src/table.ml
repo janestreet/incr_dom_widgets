@@ -141,7 +141,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         ~init:Map.empty
         ~add:(fun ~key:row_id ~data acc ->
           let key = create_key row_id data in
-          Map.add acc ~key ~data
+          Map.set acc ~key ~data
         )
         ~remove:(fun ~key:row_id ~data acc ->
           let key = create_key row_id data in
@@ -1013,7 +1013,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           let cell_html_ids =
             List.map column_id_strs ~f:(Html_id.cell_of_parts row_html_id)
           in
-          Map.add acc ~key ~data:({ row_html_id; cell_html_ids }, row)
+          Map.set acc ~key ~data:({ row_html_id; cell_html_ids }, row)
         )
         ~remove:(fun ~key ~data:_ acc -> Map.remove acc key)
         ~update:(fun ~key ~old_data:_ ~new_data:row acc ->
