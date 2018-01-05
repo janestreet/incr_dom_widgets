@@ -9,6 +9,8 @@ build: [
   ["jbuilder" "build" "-p" name "-j" jobs]
 ]
 depends: [
+  "async_js"
+  "async_kernel"
   "incr_dom"
   "incr_map"
   "incr_select"

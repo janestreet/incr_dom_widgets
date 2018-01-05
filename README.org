@@ -8,3 +8,18 @@ efficient rendering of tabular data, in particular supporting /partial
 rendering/, /i.e./, only rendering a subset of the widgets that are
 logically in the view, depending on what is expected to be visible to
 the end user.
+
+* Mesa
+
+  Mesa provides an /easy/ way of creating functional web
+  tables. The user supplies a ~row~ type and "actions" to be run on
+  those ~rows~ (along with some other funtionality) and the user gets
+  back a table capable of:
+  - Partial rendering
+  - Navigating the table with the arrow keys and the mouse
+  - Sorting the table on a column
+  - Editing the table-cells' values and communicating those changes
+    back to a server
+  - Searching the table for a row
+
+  (see ./src/mesa_intf.ml from more details)
