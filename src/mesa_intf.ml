@@ -235,8 +235,8 @@ module type Mesa = sig
       - Single clicks focuses a row. This is disabled when editing cells
       - Double clicks start edit mode for the row
       - Scroll wheel scrolls the table, however this is disabled when
-      editing a row
-      {3 Keyboard events}
+        editing a row
+        {3 Keyboard events}
 
       {v
       | Key code  | View mode               | Edit mode                                    | Search mode       |
