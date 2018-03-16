@@ -747,7 +747,7 @@ module Input = struct
     let sorted_options =
       match compare with
       | None -> select_options
-      | Some cmp -> List.sort select_options ~cmp:(fun (l, _) (r, _) -> cmp l r)
+      | Some cmp -> List.sort select_options ~compare:(fun (l, _) (r, _) -> cmp l r)
     in
     Node.select ~key:id (Attr.id id :: attr) (List.map sorted_options ~f:snd)
   ;;

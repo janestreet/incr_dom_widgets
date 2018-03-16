@@ -1,7 +1,10 @@
 open! Core_kernel
 open Import
+open Dom_html
 
-module Keyboard_code = Dom_html.Keyboard_code
+type t = keyboardEvent Js.t
+
+module Keyboard_code = Keyboard_code
 
 let key e = Keyboard_code.of_event e
 

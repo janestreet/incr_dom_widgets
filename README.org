@@ -23,3 +23,14 @@ the end user.
   - Searching the table for a row
 
   (see ./src/mesa_intf.ml from more details)
+
+* Keybard_event_handler, Variable_keyboard_event_hander, Help_text and Grouped_help_text
+
+  The Keyboard_event_handler and Help_text modules provide a way of
+  creating a keyboard event handler and generating help text for it.
+  Variable_keyboard_event_handler provides some additional
+  functionality on top of Keyboard_event_handler, and similarly
+  Grouped_help_text provides some additional functionality on top of
+  Help_text.
+
+

@@ -697,8 +697,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   let find_col_by_position (m : Model.t) (d : _ Derived_model.t) position =
     let open Option.Let_syntax in
-    let result =
-      List.fold_until (Map.data d.columns) ~init:true ~f:(fun is_first (col_id, _) ->
+    List.fold_until (Map.data d.columns) ~init:true
+      ~f:(fun is_first (col_id, _) ->
         let col_header_rect =
           let html_id = Html_id.column_header_cell m.id col_id in
           let%map elem = Dom_html.getElementById_opt html_id in
@@ -713,15 +713,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           then (Stop (Some (`At col_id)))
           else (Continue false)
       )
-    in
-    match result with
-    | Stopped_early result -> result
-    | Finished      false  -> Some `After
-    | Finished      true   ->
-      let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
-      if Float.(<) position (Js_misc.Rect.left tbody_rect)
-      then `Before
-      else `After
+      ~finish:(function
+        | false  -> Some `After
+        | true   ->
+          let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
+          if Float.(<) position (Js_misc.Rect.left tbody_rect)
+          then `Before
+          else `After
+      )
   ;;
 
   let on_display ~(old:Model.t) (model:Model.t) d =
