@@ -1,4 +1,5 @@
 opam-version: "1.2"
+version: "v0.11.0"
 maintainer: "opensource@janestreet.com"
 authors: ["Jane Street Group, LLC <opensource@janestreet.com>"]
 homepage: "https://github.com/janestreet/incr_dom_widgets"
@@ -9,15 +10,15 @@ build: [
   ["jbuilder" "build" "-p" name "-j" jobs]
 ]
 depends: [
-  "async_js"
-  "async_kernel"
-  "incr_dom"
-  "incr_map"
-  "incr_select"
-  "incremental_kernel"
-  "ppx_jane"
-  "record_builder"
-  "splay_tree"
+  "async_js"                {>= "v0.11" & < "v0.12"}
+  "async_kernel"            {>= "v0.11" & < "v0.12"}
+  "incr_dom"                {>= "v0.11" & < "v0.12"}
+  "incr_map"                {>= "v0.11" & < "v0.12"}
+  "incr_select"             {>= "v0.11" & < "v0.12"}
+  "incremental_kernel"      {>= "v0.11" & < "v0.12"}
+  "ppx_jane"                {>= "v0.11" & < "v0.12"}
+  "record_builder"          {>= "v0.11" & < "v0.12"}
+  "splay_tree"              {>= "v0.11" & < "v0.12"}
   "jbuilder"                {build & >= "1.0+beta18.1"}
   "js_of_ocaml"             {>= "3.0"}
   "js_of_ocaml-ppx"
