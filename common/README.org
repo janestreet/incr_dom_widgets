@@ -1,0 +1,9 @@
+#+TITLE: ~Incr_dom_widgets_common~: non-js_of_ocaml components of ~Incr_dom_widgets~
+#+PARENT: ../../doc/webdev/index.org
+
+The components of the Incr_dom_widgets library that do not use js_of_ocaml.
+
+This library contains the components of the Incr_dom_widgets library
+that do not depend on js_of_ocaml, in order to make them available to
+use in pure OCaml code (e.g. web server code) in addition to
+js_of_ocaml code. For the moment, this is limited to the CSS module. 

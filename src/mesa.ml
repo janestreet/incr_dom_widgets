@@ -635,8 +635,8 @@ module Make (State : State) (Row : Row with module State := State) = struct
              ; z_index 1
              ; width (`Percent (Percent.of_mult 1.))
              ; opacity 1
-             ; background_color `Black
-             ; color `White
+             ; background_color (`Name "black")
+             ; color (`Name "white")
              ]
            |> to_attr)
     in

@@ -283,10 +283,10 @@ let status ~num_active ~num_inactive ~num_not_synchronized ~num_dead =
       |> pack
     ]
   in
-  group   "#" `Green   ~f:num_active
-  @ group "!" `Red     ~f:num_inactive
-  @ group "?" `Yellow  ~f:num_not_synchronized
-  @ group "X" `Magenta ~f:num_dead
+  group   "#" (`Name "green")   ~f:num_active
+  @ group "!" (`Name "red")     ~f:num_inactive
+  @ group "?" (`Name "yellow")  ~f:num_not_synchronized
+  @ group "X" (`Name "magenta") ~f:num_dead
   @ [ create
         Kind.string
         ~read:(fun m ->
@@ -294,7 +294,7 @@ let status ~num_active ~num_inactive ~num_not_synchronized ~num_dead =
                [ num_active; num_inactive; num_not_synchronized; num_dead ]
           then "NOROUTES"
           else "")
-        ~style:(Css.(concat [ color `Cyan; bold; pad ]) |> const)
+        ~style:(Css.(concat [ color (`Name "cyan"); bold; pad ]) |> const)
         ()
       |> pack
     ]
@@ -314,8 +314,8 @@ module Style = struct
     in
     fun bool ->
       if bool
-      then Css.(concat [ centered; color `Green ])
-      else Css.(concat [ centered; color `Red ])
+      then Css.(concat [ centered; color (`Name "green") ])
+      else Css.(concat [ centered; color (`Name "red") ])
 
   type theme = [ `Light | `Dark ]
 
@@ -330,18 +330,18 @@ module Style = struct
       match theme with
       | `Dark ->
         fun v ->
-          if      v < 999.95E0 then `White
-          else if v < 999.95E3 then `Yellow
-          else if v < 999.95E6 then `Green
-          else if v < 999.95E9 then `Magenta
-          else `Red
+          if      v < 999.95E0 then (`Name "white")
+          else if v < 999.95E3 then (`Name "yellow")
+          else if v < 999.95E6 then (`Name "green")
+          else if v < 999.95E9 then (`Name "magenta")
+          else (`Name "red")
       | `Light ->
         fun v ->
-          if      v < 999.95E0 then `Black
-          else if v < 999.95E3 then `GoldenRod
-          else if v < 999.95E6 then `DarkGreen
-          else if v < 999.95E9 then `DarkMagenta
-          else `DarkRed
+          if      v < 999.95E0 then (`Name "black")
+          else if v < 999.95E3 then (`Name "goldenrod")
+          else if v < 999.95E6 then (`Name "darkgreen")
+          else if v < 999.95E9 then (`Name "darkmagenta")
+          else (`Name "darkred")
     in
     fun v ->
       let v = Float.abs (to_float v) in

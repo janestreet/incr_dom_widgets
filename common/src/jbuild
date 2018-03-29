@@ -1,0 +1,12 @@
+(library
+ ((name incr_dom_widgets_common)
+  (public_name incr_dom_widgets.common)
+  (preprocess (pps (ppx_jane -ite-check ppxlib.runner)))
+  (flags (:standard -safe-string))
+  (libraries (
+    core_kernel
+    ))
+  ))
+
+
+(jbuild_version 1)
