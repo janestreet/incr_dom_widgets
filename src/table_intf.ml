@@ -198,6 +198,9 @@ module type S = sig
 
     val id : t -> Table_id.t
 
+    val float_header    : t -> Float_type.t
+    val float_first_col : t -> Float_type.t
+
     val focus_row : t -> Row_id.t option
     val focus_col : t -> Column_id.t option
 

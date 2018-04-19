@@ -104,7 +104,7 @@ module With_prefix = struct
     |> Option.value ~default:(Other str)
 end
 
-let shift_combo_to_string (key:Keyboard_code.t) (key_with_prefix:With_prefix.t) =
+let shift_combo_to_string (key:Keyboard_code.t) =
   match key with
   | Digit0       -> Some ")"
   | Digit1       -> Some "!"
@@ -127,10 +127,7 @@ let shift_combo_to_string (key:Keyboard_code.t) (key_with_prefix:With_prefix.t) 
   | Comma        -> Some "<"
   | Period       -> Some ">"
   | Slash        -> Some "?"
-  | _            ->
-    match key_with_prefix with
-    | Key str -> Some str
-    | _       -> None
+  | _            -> None
 
 let keyboard_code_to_string (key:Keyboard_code.t) (key_with_prefix:With_prefix.t) =
   match key_with_prefix with
@@ -167,12 +164,6 @@ let keyboard_code_to_string (key:Keyboard_code.t) (key_with_prefix:With_prefix.t
 
 let to_string_hum t =
   let open Core_kernel in
-  let key_with_prefix =
-    t.key
-    |> Keyboard_code.sexp_of_t
-    |> Sexp.to_string
-    |> With_prefix.of_string
-  in
   let ctrl_str = if t.ctrl then "Ctrl+" else "" in
   let alt_str  = if t.alt  then "Alt+"  else "" in
   let meta_str = if t.meta then "Meta+" else "" in
@@ -180,13 +171,50 @@ let to_string_hum t =
     match t.shift with
     | false -> "", None
     | true  ->
-      match shift_combo_to_string t.key key_with_prefix with
+      match shift_combo_to_string t.key with
       | None     -> "Shift+", None
       | Some str -> ""      , Some str
   in
   let keyboard_code_str =
     match shift_combo_str with
     | Some str -> str
-    | None     -> keyboard_code_to_string t.key key_with_prefix
+    | None     ->
+      let key_with_prefix =
+        t.key
+        |> Keyboard_code.sexp_of_t
+        |> Sexp.to_string
+        |> With_prefix.of_string
+      in
+      keyboard_code_to_string t.key key_with_prefix
   in
   String.concat [ ctrl_str ; alt_str ; shift_str ; meta_str ; keyboard_code_str ]
+
+let%expect_test "" =
+  let print ?ctrl ?alt ?shift ?meta key =
+    printf !"%{to_string_hum}\n" (create' ?ctrl ?alt ?shift ?meta key)
+  in
+  print KeyA;
+  [%expect {|a|}];
+  print ~shift:() KeyA;
+  [%expect {|Shift+a|}];
+  print ~ctrl:() ~alt:() ~shift:() ~meta:() KeyA;
+  [%expect {|Ctrl+Alt+Shift+Meta+a|}];
+  print Digit1;
+  [%expect {|1|}];
+  print ~ctrl:() Digit1;
+  [%expect {|Ctrl+1|}];
+  print Numpad1;
+  [%expect {|1|}];
+  print ~ctrl:() Numpad1;
+  [%expect {|Ctrl+1|}];
+  print ~ctrl:() Numpad1;
+  [%expect {|Ctrl+1|}];
+  print Comma;
+  [%expect {|,|}];
+  print ~shift:() Comma;
+  [%expect {|<|}];
+  print ~ctrl:() Comma;
+  [%expect {|Ctrl+,|}];
+  print ~ctrl:() ~shift:() Comma;
+  [%expect {|Ctrl+<|}];
+

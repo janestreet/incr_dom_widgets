@@ -119,12 +119,12 @@ module Kind = struct
   let span =
     (* See comment in ../protocol/rpc_protocol.ml  *)
     let to_string time_ns_span =
-      Time_ns.Span.Alternate_sexp.sexp_of_t time_ns_span
+      Time_ns.Span.sexp_of_t time_ns_span
       |> Sexp.to_string
     in
     let of_string string =
       Sexp.of_string string
-      |> Time_ns.Span.Alternate_sexp.t_of_sexp
+      |> Time_ns.Span.t_of_sexp
     in
     internal_create "time_span" of_string to_string
 
