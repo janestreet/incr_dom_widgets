@@ -2,6 +2,7 @@
 module Css                             = Css
 module Grouped_help_text               = Grouped_help_text
 module Help_text                       = Help_text
+module Interactive                     = Interactive
 module Mesa_cell                       = Mesa_cell
 module Mesa_column                     = Mesa_column
 module Mesa                            = Mesa
