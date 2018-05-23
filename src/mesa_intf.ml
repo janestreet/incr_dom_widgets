@@ -166,7 +166,7 @@ module type S = sig
     :  Model.t Incr.t
     -> Derived_model.t Incr.t
     -> inject:(Action.t -> Vdom.Event.t)
-    -> attrs:Vdom.Attr.t list
+    -> container_attrs:Row_node_spec.Attrs.t
     -> header:Vdom.Node.t
     -> Vdom.Node.t Incr.t
 end
@@ -236,8 +236,8 @@ module type Mesa = sig
       - Double clicks start edit mode for the row
       - Scroll wheel scrolls the table, however this is disabled when
         editing a row
-        {3 Keyboard events}
 
+      {3 Keyboard events}
       {v
       | Key code  | View mode               | Edit mode                                    | Search mode       |
       |-----------+-------------------------+----------------------------------------------+-------------------|

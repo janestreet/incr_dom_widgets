@@ -614,7 +614,7 @@ module Make (State : State) (Row : Row with module State := State) = struct
         (m:Model.t Incr.t)
         (d:Derived_model.t Incr.t)
         ~inject
-        ~attrs
+        ~container_attrs:user_container_attrs
         ~header
     =
     let open Vdom in
@@ -694,15 +694,40 @@ module Make (State : State) (Row : Row with module State := State) = struct
         ~inject:(fun a -> inject (Action.Table_action a))
         ~attrs:[ classes; table_style ]
     in
-    let%map id = id
+    let table_container_id =
+      let%map id = id in
+      table_container_id id
+    in
+    let table_container_attrs =
+      let%map table_container_id = table_container_id in
+      let internal_container_attrs =
+        let style =
+          let open Css in
+          flex_container ~direction:`Column ()
+          @> flex_item ~grow:1. ~shrink:1. ()
+          |> to_string_list
+        in
+        Row_node_spec.Attrs.create ~style ~attrs:[Attr.id table_container_id] ()
+      in
+      [ internal_container_attrs
+      ; user_container_attrs
+      ]
+      |> Row_node_spec.Attrs.combine
+      |> Row_node_spec.Attrs.to_vdom_attrs
+    in
+    let table_scroll_wrapper_id_attr =
+      let%map id = id in
+      table_scroll_wrapper_id id |> Attr.id
+    in
+    let%map table_container_id = table_container_id
+    and table_container_attrs = table_container_attrs
+    and table_scroll_wrapper_id_attr = table_scroll_wrapper_id_attr
     and table = table
     and searchbox = searchbox
     and mousewheel_attr = mousewheel_attr
     in
-    let table_scroll_wrapper_id_attr = Attr.id (table_scroll_wrapper_id id) in
-    let table_container_id_attr = Attr.id (table_container_id id) in
-    Node.div ~key:(table_container_id id)
-      (table_container_id_attr :: attrs)
+    Node.div ~key:table_container_id
+      table_container_attrs
       [ Node.header [ header_style ] [ header ]
       ; Node.div
           [ table_scroll_wrapper_id_attr

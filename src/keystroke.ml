@@ -217,4 +217,3 @@ let%expect_test "" =
   [%expect {|Ctrl+,|}];
   print ~ctrl:() ~shift:() Comma;
   [%expect {|Ctrl+<|}];
-
