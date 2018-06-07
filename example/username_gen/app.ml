@@ -207,7 +207,9 @@ end
 
 let update_visibility m = m
 
-let apply_action (action : Action.t) (model : Model.t) (_state : State.t) : Model.t =
+let apply_action (action : Action.t) (model : Model.t) (_state : State.t)
+      ~schedule_action:_
+  : Model.t =
   match action with
   | Tick ->
     { model with tick_counter = succ model.tick_counter }
@@ -225,8 +227,9 @@ let apply_action (action : Action.t) (model : Model.t) (_state : State.t) : Mode
     let form_state = Form.State.create ?init User.form in
     { model with form_state; }
 
-let on_startup ~schedule _ =
-  Async_kernel.Clock_ns.every (Time_ns.Span.of_sec 5.) (fun () -> schedule (Action.Tick));
+let on_startup ~schedule_action _ =
+  Async_kernel.Clock_ns.every
+    (Time_ns.Span.of_sec 5.) (fun () -> schedule_action (Action.Tick));
   Async_kernel.return ()
 
 let view (model : Model.t Incr.t) ~inject : Vdom.Node.t Incr.t =
@@ -368,7 +371,7 @@ let view (model : Model.t Incr.t) ~inject : Vdom.Node.t Incr.t =
     ; username_list
     ]
 
-let on_display ~old:_ _ _ = ()
+let on_display ~old:_ _ _ ~schedule_action:_ = ()
 
 let create () =
   { Model.
