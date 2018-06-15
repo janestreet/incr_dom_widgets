@@ -158,7 +158,8 @@ module Make (State : State) (Row : Row with module State := State) = struct
           Incr.Map.mapi columns ~f:(fun ~key:_ ~data:col ->
             Table_widget.Column.create
               ~header:(Mesa_column.header col)
-              ?sort_by:(Mesa_column.sort_by col)
+              ?sort_by:(Option.map (Mesa_column.sort_by col) ~f:(fun sort_by ->
+                fun _row_id row -> sort_by row))
               ?group:(Mesa_column.group col)
               ())
           >>| Map.to_alist

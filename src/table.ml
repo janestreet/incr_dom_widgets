@@ -60,12 +60,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   module Column = struct
     type 'a t =
       { header: Node.t
+      ; header_style : Css.t
       ; group: string option
-      ; sort_by: ('a -> Sort_key.t) option
+      ; sort_by: (Row_id.t -> 'a -> Sort_key.t) option
       } [@@deriving fields]
 
-    let create ?group ?sort_by ~header () =
+    let create ?group ?sort_by ?(header_style=Css.empty) ~header () =
       { header
+      ; header_style
       ; group
       ; sort_by
       }
@@ -128,14 +130,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     include T
     include Comparable.Make(T)
 
-    let convert_sort_criteria sort_criteria row =
+    let convert_sort_criteria sort_criteria row_id row =
       Sort_criteria.map sort_criteria ~f:(fun column ->
-        lazy (Option.map (Column.sort_by column) ~f:(fun sort_by -> sort_by row))
+        lazy (Option.map (Column.sort_by column) ~f:(fun sort_by -> sort_by row_id row))
       )
 
     let sort sort_criteria ~(rows : _ Row_id.Map.t Incr.t) =
       let create_key row_id data =
-        create (convert_sort_criteria sort_criteria data) row_id
+        create (convert_sort_criteria sort_criteria row_id data) row_id
       in
       Incr.Map.unordered_fold rows
         ~init:Map.empty
@@ -359,7 +361,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let current_key (d : _ Derived_model.t) ~row_id =
     let open Option.Let_syntax in
     let%map row = Row_id.Map.find d.rows row_id in
-    let sort_criteria = Key.convert_sort_criteria d.sort_criteria row in
+    let sort_criteria = Key.convert_sort_criteria d.sort_criteria row_id row in
     Key.create sort_criteria row_id
   ;;
 
@@ -859,17 +861,19 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     z_index_style :: sticky_style
 
   let view_header ?override_on_click ~inject ~columns ~top_sticky_pos ~left_sticky_pos m =
-    let get_sticky_attrs ~top_sticky_pos =
+    let get_sticky_style ~top_sticky_pos =
       let first_cell =
         sticky_style ~sticky_pos:(List.filter_opt [ left_sticky_pos; top_sticky_pos ])
           ~z_index:3
-        |> Attr.style
       in
       let default =
         sticky_style ~sticky_pos:(Option.to_list top_sticky_pos) ~z_index:2
-        |> Attr.style
       in
       first_cell, default
+    in
+    let get_sticky_attrs ~top_sticky_pos =
+      let first_cell, default = get_sticky_style ~top_sticky_pos in
+      Attr.style first_cell, Attr.style default
     in
     let header_nodes =
       let%map sort_criteria = m >>| Model.sort_criteria
@@ -882,14 +886,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           let%map col_group_row_height = m >>| Model.col_group_row_height in
           finalize_sticky_pos (Some (dir, px + col_group_row_height))
       in
-      let first_cell_sticky_attr, default_sticky_attr =
-        get_sticky_attrs ~top_sticky_pos
+      let first_cell_sticky_style, default_sticky_style =
+        get_sticky_style ~top_sticky_pos
       in
       (List.mapi (Map.data columns) ~f:(fun i (key, data) ->
-         let sticky_attr =
+         let sticky_style =
            if i = 0
-           then [ first_cell_sticky_attr ]
-           else [ default_sticky_attr    ]
+           then first_cell_sticky_style
+           else default_sticky_style
          in
          let precedence_and_dir =
            Base_sort_criteria.find_precedence_and_dir sort_criteria key
@@ -930,7 +934,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
            ; Attr.classes ("column-header" :: sort_direction_classes)
            ]
            @ on_click
-           @ sticky_attr
+           @ [Attr.style ( sticky_style @ Css.to_string_list data.Column.header_style )]
          in
          Node.th attrs [ data.Column.header; Node.text sort_direction_indicator]))
     in

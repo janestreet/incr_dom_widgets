@@ -131,7 +131,9 @@ module type S = sig
           catalog). columns with the same group must be adjacent to be grouped together *)
       :  ?group:string
       (** used to extract a sortable value for this column from a row. *)
-      -> ?sort_by:('a -> Sort_key.t)
+      -> ?sort_by:(Row_id.t -> 'a -> Sort_key.t)
+      (** Added to the style attribuate of the th node *)
+      -> ?header_style:Css.t
       (** rendered at the top of the column.
           this node is wrapped in a <th> node with other attributes *)
       -> header:Vdom.Node.t
@@ -139,7 +141,7 @@ module type S = sig
       -> 'a t
 
     val group : _ t -> string option
-    val sort_by : 'a t -> ('a -> Sort_key.t) option
+    val sort_by : 'a t -> (Row_id.t -> 'a -> Sort_key.t) option
     val header : _ t -> Vdom.Node.t
   end
 
