@@ -725,8 +725,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       )
   ;;
 
-  let on_display ~(old:Model.t) (model:Model.t) d =
-    if old.focus_row <> model.focus_row || old.focus_col <> model.focus_col
+  let on_display ~(old_model:Model.t) (model:Model.t) d =
+    if old_model.focus_row <> model.focus_row || old_model.focus_col <> model.focus_col
     then (
       let maybe_scroll x f =
         Option.iter x ~f:(fun x -> ignore (f model d x : Scroll_result.t))

@@ -284,20 +284,20 @@ module Make (State : State) (Row : Row with module State := State) = struct
     | View -> true
     | Edit _ | Search _ -> false
 
-  let no_longer_viewing ~old (m:Model.t) =
+  let no_longer_viewing ~old_model (m:Model.t) =
     not (is_viewing m)
-    &&   is_viewing old
+    &&   is_viewing old_model
 
   let select_input_node id =
     match Dom_html.getElementById_coerce id Dom_html.CoerceTo.input with
     | None -> ()
     | Some inode -> inode##select
 
-  let maybe_select_input_node ~old (m:Model.t) =
+  let maybe_select_input_node ~old_model (m:Model.t) =
     let cell_focus_changed =
       not
         ([%compare.equal: Mesa_cell.Id.t option]
-           (Model.focus_cell old) (Model.focus_cell m))
+           (Model.focus_cell old_model) (Model.focus_cell m))
     in
     if cell_focus_changed
     then begin
@@ -314,14 +314,14 @@ module Make (State : State) (Row : Row with module State := State) = struct
     end
 
   let on_display
-        ~(old : Model.t)
+        ~(old_model : Model.t)
         (m : Model.t)
         (d : Derived_model.t)
     =
-    maybe_select_input_node ~old m;
+    maybe_select_input_node ~old_model m;
     (* If the focus has moved, and is now outside the visible range, scroll until the
        focused point is back in view.  *)
-    if no_longer_viewing ~old m
+    if no_longer_viewing ~old_model m
     then (
       Option.iter (Model.focus_row m) ~f:(fun (row_id, _) ->
         Table_widget.scroll_row_into_scroll_region m.table d.table row_id
@@ -329,7 +329,7 @@ module Make (State : State) (Row : Row with module State := State) = struct
     ) else (
       (* Because we don't re-measure the viewport, if the app is slow and a focus change
          gets batched with an edit, without the [else] it will scroll relatively twice. *)
-      Table_widget.on_display ~old:old.table m.table d.table
+      Table_widget.on_display ~old_model:old_model.table m.table d.table
     )
 
   let scroll_elt (d:Derived_model.t) =

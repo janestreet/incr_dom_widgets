@@ -371,7 +371,7 @@ let view (model : Model.t Incr.t) ~inject : Vdom.Node.t Incr.t =
     ; username_list
     ]
 
-let on_display ~old:_ _ _ ~schedule_action:_ = ()
+let on_display ~old_model:_ _ _ ~schedule_action:_ = ()
 
 let create () =
   { Model.

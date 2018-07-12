@@ -157,7 +157,7 @@ module type S = sig
     -> Model.t
 
   val on_display
-    :  old:Model_summary.t
+    :  old_model:Model_summary.t
     -> Model.t
     -> Derived_model.t
     -> unit

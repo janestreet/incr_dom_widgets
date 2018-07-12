@@ -396,7 +396,7 @@ module type S = sig
 
   (** Used for scrolling to rows/columns upon focusing them *)
   val on_display
-    :  old:Model.t
+    :  old_model:Model.t
     -> Model.t
     -> _ Derived_model.t
     -> unit
