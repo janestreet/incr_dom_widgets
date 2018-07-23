@@ -1,11 +1,12 @@
 (library
- ((name incr_dom_widgets_common)
-  (public_name incr_dom_widgets.common)
+ ((name css)
+  (public_name incr_dom_widgets.css)
   (preprocess (pps (ppx_jane -ite-check ppxlib.runner)))
   (libraries (
     core_kernel
     ))
   ))
+
 
 
 (jbuild_version 1)

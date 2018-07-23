@@ -54,23 +54,29 @@ end
 
 module Length = struct
   type t =
-    [ `Px of int
+    [ `Ch of float
     | `Em of int
+    | `Percent of Percent.t
+    | `Pt of float
+    | `Px of int
     | `Vh of Percent.t
     | `Vw of Percent.t
-    | `Percent of Percent.t
     | css_global_values
     ]
   [@@deriving sexp, bin_io, compare]
 
   let to_string_css = function
-    | `Px i -> sprintf "%ipx" i
+    | `Ch c -> sprintf "%.2fch" c
     | `Em i -> sprintf "%iem" i
+    | `Percent p -> sprintf "%.2f%%" (Percent.to_percentage p)
+    | `Pt p -> sprintf "%.2fpt" p
+    | `Px i -> sprintf "%ipx" i
     | `Vh p -> sprintf "%.2fvh" (Percent.to_percentage p)
     | `Vw p -> sprintf "%.2fvw" (Percent.to_percentage p)
-    | `Percent p -> sprintf "%.2f%%" (Percent.to_percentage p)
     | #css_global_values as l ->
       sexp_of_css_global_values l |> sanitize_sexp
+
+  let percent100 = `Percent (Percent.of_percentage 100.)
 end
 
 module Auto_or_length = struct
@@ -87,6 +93,8 @@ end
 
 let value_map o ~f = Option.value_map o ~default:"" ~f
 
+(** (field * value) list.  Where value should be escaped / quoted
+    as necessary as per https://www.w3.org/TR/CSS21/syndata.html#rule-sets. *)
 type t = (string * string) list [@@deriving sexp, compare, bin_io]
 
 let combine t1 t2 = t1 @ t2
@@ -98,15 +106,57 @@ let to_string_css t =
   List.map t ~f:(fun (field, value) -> sprintf "%s: %s" field value)
   |> String.concat ~sep:";"
 
-let create ~field ~value = [(field, value)]
+let of_string_css_exn s =
+  Css_parser.parse_declaration_list s
+  |> Or_error.ok_exn
+;;
+
+(** create_raw creates a single field, value pair.  It assumes that the value is a valid
+    css value.  As such it is unsafe to use with arbitrary value strings.  But for the
+    vast majority of combinators in this module it is the right thing to use, as we know
+    by construction that the values do not need quoting / escaping. *)
+let create_raw ~field ~value = [(field, value)]
+
+let create ~field ~value =
+  Css_parser.validate_value value |> Or_error.ok_exn;
+  create_raw ~field ~value
+
 let empty = []
+
+let create_placement name length =
+  create ~field:name ~value:(Length.to_string_css length)
+
+let left = create_placement "left"
+let top = create_placement "top"
+let bottom = create_placement "bottom"
+let right = create_placement "right"
+
+let position ?top:tp ?bottom:bt ?left:lt ?right:rt pos =
+  let pos =
+    let value =
+      match pos with
+      | `Static -> "static"
+      | `Absolute -> "absolute"
+      | `Sticky -> "sticky"
+      | `Relative -> "relative"
+      | `Fixed -> "fixed"
+    in
+    create ~field:"position" ~value
+  in
+  let convert opt_l f = Option.value_map opt_l ~default:empty ~f in
+  concat [ pos
+         ; convert tp top
+         ; convert lt left
+         ; convert rt right
+         ; convert bt bottom ]
+;;
 
 let box_sizing v =
   let value =
     [%sexp_of:[ `Content_box | `Border_box | css_global_values ]] v
     |> sanitize_sexp
   in
-  create ~field:"box-sizing" ~value
+  create_raw ~field:"box-sizing" ~value
 
 let display v =
   let value =
@@ -119,28 +169,42 @@ let display v =
       v
     |> sanitize_sexp
   in
-  create ~field:"display" ~value
+  create_raw ~field:"display" ~value
 
 let visibility v =
   let value =
     [%sexp_of:[`Visible | `Hidden | `Collapse | css_global_values ]] v
     |> sanitize_sexp
   in
-  create ~field:"visibility" ~value
+  create_raw ~field:"visibility" ~value
 
 let overflow v =
   let value =
     [%sexp_of:[ `Visible | `Hidden | `Scroll | `Auto | css_global_values ]] v
     |> sanitize_sexp
   in
-  create ~field:"overflow" ~value
+  create_raw ~field:"overflow" ~value
 
 
-let z_index i = create ~field:"z-index" ~value:(Int.to_string i)
-let opacity i = create ~field:"opacity" ~value:(Int.to_string i)
+let z_index i = create_raw ~field:"z-index" ~value:(Int.to_string i)
+let opacity i = create_raw ~field:"opacity" ~value:(Int.to_string i)
 
 let create_length_field field =
-  fun l -> create ~field ~value:(Auto_or_length.to_string_css l)
+  fun l -> create_raw ~field ~value:(Auto_or_length.to_string_css l)
+
+let white_space v =
+  let value =
+    match v with
+    | `Normal -> "normal"
+    | `Nowrap -> "nowrap"
+    | `Pre -> "pre"
+    | `Pre_line -> "pre-line"
+    | `Pre_wrap -> "pre-wrap"
+    | `Initial -> "initial"
+    | `Inherit -> "inherit"
+  in
+  create ~field:"white-space" ~value
+;;
 
 type font_style = [ `Normal | `Italic | `Oblique | css_global_values ]
 type font_weight = [ `Normal | `Bold | `Bolder | `Lighter | `Number of int | css_global_values ]
@@ -148,14 +212,14 @@ type font_variant = [ `Normal | `Small_caps | css_global_values ]
 
 let font_size = create_length_field "font-size"
 
-let font_family l = create ~field:"font-family" ~value:(String.concat l ~sep:",")
+let font_family l = create_raw ~field:"font-family" ~value:(String.concat l ~sep:",")
 
 let font_style s =
   let value =
     [%sexp_of: [ `Normal | `Italic | `Oblique | css_global_values ]] s
     |> sanitize_sexp
   in
-  create ~field:"font-style" ~value
+  create_raw ~field:"font-style" ~value
 
 let font_weight =
   let module Static_weight = struct
@@ -170,7 +234,7 @@ let font_weight =
         Static_weight.sexp_of_t x
         |> sanitize_sexp
     in
-    create ~field:"font-weight" ~value
+    create_raw ~field:"font-weight" ~value
 
 let bold = font_weight `Bold
 
@@ -179,30 +243,29 @@ let font_variant s =
     [%sexp_of: [ `Normal | `Small_caps | css_global_values ]] s
     |> sanitize_sexp
   in
-  create ~field:"font-variant" ~value
+  create_raw ~field:"font-variant" ~value
 
 let font ~size ~family ?style ?weight ?variant () =
-  let m = Option.map in
-  font_size size
-  @> font_family family
-  @> ([ m style   ~f:font_style
-      ; m weight  ~f:font_weight
-      ; m variant ~f:font_variant
-      ] |> List.filter_opt |> concat)
+  [ Some (font_size size)
+  ; Some (font_family family)
+  ; Option.map style   ~f:font_style
+  ; Option.map weight  ~f:font_weight
+  ; Option.map variant ~f:font_variant
+  ] |> List.filter_opt |> concat
 
-let color c = create ~field:"color" ~value:(Color.to_string_css c)
-let background_color c = create ~field:"background-color" ~value:(Color.to_string_css c)
+let color c = create_raw ~field:"color" ~value:(Color.to_string_css c)
+let background_color c = create_raw ~field:"background-color" ~value:(Color.to_string_css c)
 
 let create_alignment field =
   fun a ->
-    create ~field ~value:(Alignment.to_string_css (a :> Alignment.t))
+    create_raw ~field ~value:(Alignment.to_string_css (a :> Alignment.t))
 
 let text_align       = create_alignment "text-align"
 let horizontal_align = create_alignment "horizontal-align"
 let vertical_align   = create_alignment "vertical-align"
 
 let float f =
-  create ~field:"float"
+  create_raw ~field:"float"
     ~value:([%sexp_of:[ `None | `Left | `Right | css_global_values ]] f |> sanitize_sexp)
 
 let width     = create_length_field "width"
@@ -247,22 +310,37 @@ type border_style =
   | css_global_values ]
 [@@deriving sexp]
 
+(** Concat 2 values with a space in between.  If either is the empty string
+    don't put in unnecessary whitespace. *)
+let concat2v v1 v2 =
+  match v1, v2 with
+  | "", x -> x
+  | x, "" -> x
+  | x, y  -> x ^ " " ^ y
+;;
+
+(** Concat up to 3 values with spaces in between. *)
+let concat3v v1 v2 v3 =
+  concat2v (concat2v v1 v2) v3
+;;
+
 let border_value ?width ?color ~style () =
   let style = [%sexp_of:border_style] style |> sanitize_sexp in
   let width = value_map width ~f:Length.to_string_css in
   let color = value_map color ~f:Color.to_string_css in
-  sprintf "%s %s %s" width style color
+  concat3v width style color
 
 let create_border ?side () =
-  let side =
-    value_map side ~f:(fun side ->
-      side
-      |> [%sexp_of:[`Top | `Right | `Bottom | `Left ]]
-      |> sanitize_sexp
-    )
+  let field =
+    match side with
+    | Some `Top    -> "border-top"
+    | Some `Bottom -> "border-bottom"
+    | Some `Right  -> "border-right"
+    | Some `Left   -> "border-left"
+    | None         -> "border"
   in
   fun ?width ?color ~style () ->
-    create ~field:("border-" ^ side) ~value:(border_value ?width ?color ~style ())
+    create_raw ~field ~value:(border_value ?width ?color ~style ())
 
 let border_top    = create_border ~side:`Top    ()
 let border_bottom = create_border ~side:`Bottom ()
@@ -271,16 +349,18 @@ let border_right  = create_border ~side:`Right  ()
 let border        = create_border               ()
 
 let outline ?width ?color ~style () =
-  create ~field:"outline" ~value:(border_value ?width ?color ~style ())
+  create_raw ~field:"outline" ~value:(border_value ?width ?color ~style ())
 
 let border_collapse v =
   let value =
     [%sexp_of:[`Separate | `Collapse | css_global_values]] v
     |> sanitize_sexp
   in
-  create ~field:"border-collapse" ~value
+  create_raw ~field:"border-collapse" ~value
 
 let border_spacing = create_length_field "border-spacing"
+
+let border_radius l = create ~field:"border-radius" ~value:(Length.to_string_css l)
 
 type text_decoration_line =
   [ `None | `Underline | `Overline | `Line_through | css_global_values ]
@@ -300,9 +380,9 @@ let text_decoration ?style ?color ~line () =
       value_map style ~f:(fun s -> [%sexp_of:text_decoration_style] s |> sanitize_sexp)
     in
     let color = value_map color ~f:Color.to_string_css in
-    sprintf "%s %s %s" line style color
+    concat3v line style color
   in
-  create ~field:"text-decoration" ~value
+  create_raw ~field:"text-decoration" ~value
 
 let flex_container ?(inline=false) ?(direction=`Row) ?(wrap=`Nowrap) () =
   let direction =
@@ -315,19 +395,19 @@ let flex_container ?(inline=false) ?(direction=`Row) ?(wrap=`Nowrap) () =
   in
   concat
     [ display (if inline then `Inline_flex else `Flex)
-    ; create ~field:"flex-direction" ~value:direction
-    ; create ~field:"flex-wrap" ~value:wrap
+    ; create_raw ~field:"flex-direction" ~value:direction
+    ; create_raw ~field:"flex-wrap" ~value:wrap
     ]
 
 let flex_item ?order ?(basis=`Auto) ?(shrink=1.) ~grow () =
   let order =
-    Option.map order ~f:(fun i -> create ~field:"order" ~value:(Int.to_string i))
+    Option.map order ~f:(fun i -> create_raw ~field:"order" ~value:(Int.to_string i))
     |> Option.to_list
     |> List.join
   in
   let flex =
     let basis = Auto_or_length.to_string_css basis in
-    create ~field:"flex" ~value:(sprintf "%f %f %s" grow shrink basis)
+    create_raw ~field:"flex" ~value:(sprintf "%f %f %s" grow shrink basis)
   in
   concat
     [ flex
@@ -349,7 +429,7 @@ let animation
         |> [%sexp_of:[ `Normal | `Reverse | `Alternate | `Alternate_reverse | css_global_values ]]
         |> sanitize_sexp
       in
-      create ~field:"animation-direction" ~value)
+      create_raw ~field:"animation-direction" ~value)
   in
   let fill_mode =
     m fill_mode ~f:(fun f ->
@@ -357,16 +437,39 @@ let animation
         [%sexp_of:[ `None | `Forwards | `Backwards | `Both | css_global_values ]] f
         |> sanitize_sexp
       in
-      create ~field:"animation-fill-mode" ~value)
+      create_raw ~field:"animation-fill-mode" ~value)
   in
-  [ Some (create ~field:"animation-name" ~value:name)
-  ; Some (create ~field:"animation-duration" ~value:(span_to_string duration))
-  ; m delay ~f:(fun s -> create ~field:"animation-delay" ~value:(span_to_string s))
-  ; m iter_count ~f:(fun i -> create ~field:"animation-iteration-count" ~value:(Int.to_string i))
-  ; m timing_function ~f:(fun value -> create ~field:"animation-timing-function" ~value)
+  [ Some (create_raw ~field:"animation-name" ~value:name)
+  ; Some (create_raw ~field:"animation-duration" ~value:(span_to_string duration))
+  ; m delay ~f:(fun s -> create_raw ~field:"animation-delay" ~value:(span_to_string s))
+  ; m iter_count ~f:(fun i -> create_raw ~field:"animation-iteration-count" ~value:(Int.to_string i))
+  ; m timing_function ~f:(fun value -> create_raw ~field:"animation-timing-function" ~value)
   ; direction
   ; fill_mode
   ]
   |> List.filter_opt
   |> concat
+
+
+let%expect_test "to_string_css -> of_string_css_exn -> to_string_css" =
+  let t css =
+    let s = to_string_css css in
+    let s2 = to_string_css (of_string_css_exn s) in
+    print_endline s;
+    print_endline s2
+  in
+  t (flex_item ~grow:1.0 () @> overflow `Scroll);
+  t (flex_container ~inline:true ~direction:`Column () @> border ~style:`Dashed ());
+  t (color (`RGBA (Color.RGBA.create ~r:100 ~g:100 ~b:100 ())));
+  t (create ~field:"content" ~value:{|";"|});
+  [%expect{|
+    flex: 1.000000 1.000000 auto;overflow: scroll
+    flex: 1.000000 1.000000 auto;overflow: scroll
+    display: inline-flex;flex-direction: column;flex-wrap: nowrap;border: dashed
+    display: inline-flex;flex-direction: column;flex-wrap: nowrap;border: dashed
+    color: rgb(100,100,100)
+    color: rgb(100,100,100)
+    content: ";"
+    content: ";" |}]
+;;
 

@@ -23,7 +23,7 @@ let quick_header ?(sep = Vdom.Node.create "br" [] []) s =
         [ Css.text_align `Center
         ; Css.margin ~top:(`Px 2) ~bottom:(`Px 2) ~left:(`Px 7) ~right:(`Px 7) ()
         ]
-      |> Css.to_attr
+      |> Vdom.Attr.style
     ]
     (List.map s ~f:Vdom.Node.text
      |> List.intersperse ~sep)
@@ -59,7 +59,10 @@ let view t row mode ~cell_html_id ~remember_edit =
     | `Horizontal -> Css.flex_container ~direction:`Row    ()
   in
   let rows =
-    let flex = Css.(to_attr (flex_item ~grow:1. ~basis:(`Px 0) ())) in
+    let flex =
+      Css.(flex_item ~grow:1. ~basis:(`Px 0) ())
+      |> Vdom.Attr.style
+    in
     Incr.Map.mapi cells ~f:(fun ~key:_ ~data:node ->
       Vdom.Node.div
         [ flex ]
@@ -68,7 +71,7 @@ let view t row mode ~cell_html_id ~remember_edit =
   in
   let style_attr =
     Css.concat [ t.style; flex_container ]
-    |> Css.to_attr
+    |> Vdom.Attr.style
   in
   let%map rows = rows in
   Row_node_spec.(

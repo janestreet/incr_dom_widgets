@@ -832,43 +832,36 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     then m
     else { m with visibility_info; height_cache; col_group_row_height }
 
-  let px_of_int x =
-    Int.to_string x ^ "px"
-
-  let px_of_float x =
-    px_of_int (Float.iround_nearest_exn x)
-
   let spacer ~key =
     let id_attr = Attr.id (Html_id.spacer key) in
     stage (fun height ->
-      [Node.tr ~key [ id_attr; Attr.style [ "height", px_of_float height ]] []]
+      [ Node.tr ~key
+          [ id_attr
+          ; Attr.style (Css.height (`Px (Float.iround_nearest_exn height)))
+          ]
+          []
+      ]
     )
 
-  let sticky_pos side (pos:Float_type.t Incr.t) =
-    let%map pos = pos >>| Float_type.px_from_edge in
-    Option.map pos ~f:(fun pos -> side, pos)
+  let sticky_pos (pos:Float_type.t Incr.t) =
+    pos >>| Float_type.px_from_edge
 
   let finalize_sticky_pos sticky_pos =
-    Option.map sticky_pos ~f:(fun (side, pos) -> side, sprintf "%dpx" pos)
+    Option.map sticky_pos ~f:(fun pos -> `Px pos)
 
-  let sticky_style ~sticky_pos ~z_index =
+  let sticky_style ?left_sticky_pos ?top_sticky_pos ~z_index:z_ndx () =
     let sticky_style =
-      if List.is_empty sticky_pos
-      then []
-      else (("position", "sticky") :: sticky_pos)
+      match left_sticky_pos, top_sticky_pos with
+      | None, None -> Css.empty
+      | left, top  -> Css.position ?top ?left `Sticky
     in
-    let z_index_style = "z-index", Int.to_string z_index in
-    z_index_style :: sticky_style
+    Css.(z_index z_ndx @> sticky_style)
+  ;;
 
   let view_header ?override_on_click ~inject ~columns ~top_sticky_pos ~left_sticky_pos m =
     let get_sticky_style ~top_sticky_pos =
-      let first_cell =
-        sticky_style ~sticky_pos:(List.filter_opt [ left_sticky_pos; top_sticky_pos ])
-          ~z_index:3
-      in
-      let default =
-        sticky_style ~sticky_pos:(Option.to_list top_sticky_pos) ~z_index:2
-      in
+      let first_cell = sticky_style ?left_sticky_pos ?top_sticky_pos ~z_index:3 () in
+      let default = sticky_style ?top_sticky_pos ~z_index:2 () in
       first_cell, default
     in
     let get_sticky_attrs ~top_sticky_pos =
@@ -882,9 +875,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       and top_sticky_pos =
         match top_sticky_pos with
         | None           -> Incr.return None
-        | Some (dir, px) ->
+        | Some px ->
           let%map col_group_row_height = m >>| Model.col_group_row_height in
-          finalize_sticky_pos (Some (dir, px + col_group_row_height))
+          finalize_sticky_pos (Some (px + col_group_row_height))
       in
       let first_cell_sticky_style, default_sticky_style =
         get_sticky_style ~top_sticky_pos
@@ -934,7 +927,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
            ; Attr.classes ("column-header" :: sort_direction_classes)
            ]
            @ on_click
-           @ [Attr.style ( sticky_style @ Css.to_string_list data.Column.header_style )]
+           @ [Attr.style (Css.concat [sticky_style; data.Column.header_style])]
          in
          Node.th attrs [ data.Column.header; Node.text sort_direction_indicator]))
     in
@@ -1000,10 +993,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     }
 
   let view_rendered_rows ~table_id ~column_ids ~row_view ~render_row ~left_sticky_pos =
-    let non_sticky_style = sticky_style ~sticky_pos:[] ~z_index:1 in
-    let sticky_style =
-      sticky_style ~sticky_pos:(Option.to_list left_sticky_pos) ~z_index:2
-    in
+    let non_sticky_style = sticky_style ~z_index:1 () in
+    let sticky_style = sticky_style ?left_sticky_pos ~z_index:2 () in
     let%bind column_ids = column_ids in
     let column_id_strs = List.map column_ids ~f:Column_id.to_string in
     (* Annotate each row with its html ids - we do this because the string conversions can
@@ -1035,7 +1026,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
             let sticky_style = if i = 0 then sticky_style else non_sticky_style in
             let attrs =
               attrs.other_attrs
-              @ [ Attr.style (attrs.style @ sticky_style)
+              @ [ Attr.style (Css.concat [attrs.style; sticky_style])
                 ; Attr.id cell_html_id
                 ]
             in
@@ -1056,8 +1047,8 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     in
     let row_view = d >>| Derived_model.row_view in
     let%bind table_id = m >>| Model.id
-    and      top_sticky_pos  = sticky_pos "top"  (m >>| Model.float_header)
-    and      left_sticky_pos = sticky_pos "left" (m >>| Model.float_first_col)
+    and      top_sticky_pos  = sticky_pos (m >>| Model.float_header)
+    and      left_sticky_pos = sticky_pos (m >>| Model.float_first_col)
     in
     let left_sticky_pos = finalize_sticky_pos left_sticky_pos in
     let%map header =
@@ -1070,7 +1061,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     Node.table attrs
       [ Node.thead
           [ Attr.id (Html_id.thead table_id)
-          ; Attr.style ([ "background-color", "inherit" ])
+          ; Attr.style (Css.background_color `Inherit)
           ]
           header
       ; Node.tbody [Attr.id (Html_id.tbody table_id)]

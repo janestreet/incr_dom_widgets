@@ -81,7 +81,7 @@ let add_command t command = t @ [ command ]
 
 let view_rows ?(sep=" or ") t (view_spec:View_spec.t) =
   let open Vdom in
-  let align how = Css.(text_align how |> to_attr) in
+  let align how = Css.(text_align how) |> Attr.style  in
   List.map (commands t) ~f:(fun command ->
     Node.tr []
       [ Node.td [ align `Right ]

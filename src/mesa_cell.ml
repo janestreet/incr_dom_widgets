@@ -207,7 +207,7 @@ let render_edit id html_id style ~placeholder ~of_string ~current_edit ~remember
     ; Attr.placeholder placeholder
     ; Attr.create "type" "text"
     ; Attr.on_input (fun _ value -> remember_edit id value)
-    ; Css.to_attr style
+    ; Attr.style style
     ; tab_index
     ]
     []
@@ -216,7 +216,7 @@ let render_view html_id style text =
   let open Vdom in
   Node.div
     [ Attr.id html_id
-    ; Css.to_attr style
+    ; Attr.style style
     ]
     [ Node.text text ]
 

@@ -87,9 +87,10 @@ type 'a t = Parse_state.t -> 'a Init_result.t
    monospaced font).
 *)
 
-let default_editor_message_style_term = ("font-family", "Arial")
-let default_editor_message_attr = Attr.style [ default_editor_message_style_term ]
-let error_attr = Attr.style [ "background", "#FFCCCC"; default_editor_message_style_term ]
+let default_editor_message_style_term = Css.font_family ["Arial"]
+let default_editor_message_attr = Attr.style default_editor_message_style_term
+let error_attr =
+  Attr.style Css.(background_color (`Name "#FFCCCC") @> default_editor_message_style_term)
 
 module Init = struct
   type 'a t =
@@ -134,7 +135,7 @@ module Init = struct
       in
       let between_node = Option.value between ~default:(Node.div [] []) in
       Node.div
-        [ Attr.style [ "text-align", "center" ] ]
+        [ Attr.style Css.(text_align `Center) ]
         [ between_node; diff_node ]
   ;;
 
@@ -643,13 +644,13 @@ module Primitives = struct
       ;;
 
       let default_modifying_button_attr =
-        [ Attr.style
-            [ "font-family"   , "Arial"
-            ; "font-size"     , "10pt"
-            ; "padding"       , "1px"
-            ; "margin-top"    , "2px"
-            ; "margin-bottom" , "2px"
-            ]
+        [ Attr.style Css.(
+            font_family ["Arial"]
+            @> font_size (`Pt 10.0)
+            @> uniform_padding (`Px 1)
+            @> margin_top (`Px 2)
+            @> margin_bottom (`Px 2)
+          )
         ]
       ;;
 

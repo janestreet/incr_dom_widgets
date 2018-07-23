@@ -639,15 +639,16 @@ module Make (State : State) (Row : Row with module State := State) = struct
              ; background_color (`Name "black")
              ; color (`Name "white")
              ]
-           |> to_attr)
+           |> Attr.style)
     in
-    let header_style = Css.(flex_item ~grow:0. ~shrink:0. ~basis:`Auto () |> to_attr) in
+    let header_style = Css.(flex_item ~grow:0. ~shrink:0. ~basis:`Auto ()
+                            |> Attr.style) in
     let table_div_style =
       Css.(concat
              [ flex_item ~grow:1. ~shrink:1. ~basis:`Auto ()
              ; overflow `Auto
              ]
-           |> to_attr)
+           |> Attr.style)
     in
     let searchbox =
       let%map id = id
@@ -675,13 +676,13 @@ module Make (State : State) (Row : Row with module State := State) = struct
             ; Attr.placeholder "Search"
             ; Attr.create "type" "text"
             ; Attr.on_input (fun _ev text -> inject (Action.Search text))
-            ; Css.to_attr style
+            ; Attr.style style
             ]
             []
         ]
     in
     let render_row = row_renderer m ~inject in
-    let table_style = m >>| fun m -> Model.styles m |> Css.to_attr in
+    let table_style = m >>| fun m -> Model.styles m |> Attr.style in
     Incr.set_cutoff table_style Incr.Cutoff.always;
     let classes = m >>| fun m -> Model.classes m |> Attr.classes in
     Incr.set_cutoff classes Incr.Cutoff.always;
@@ -706,7 +707,6 @@ module Make (State : State) (Row : Row with module State := State) = struct
           let open Css in
           flex_container ~direction:`Column ()
           @> flex_item ~grow:1. ~shrink:1. ()
-          |> to_string_list
         in
         Row_node_spec.Attrs.create ~style ~attrs:[Attr.id table_container_id] ()
       in

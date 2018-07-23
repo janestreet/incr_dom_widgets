@@ -3,14 +3,14 @@ open! Import
 
 module Attrs = struct
   type t =
-    { style : (string * string) list
+    { style : Css.t
     ; other_attrs : Vdom.Attr.t list
     }
 
-  let create ?(style=[]) ?(attrs=[]) () = { style; other_attrs = attrs }
+  let create ?(style=Css.empty) ?(attrs=[]) () = { style; other_attrs = attrs }
 
   let combine t_list =
-    { style = List.concat_map t_list ~f:(fun t -> t.style)
+    { style = Css.concat (List.map t_list ~f:(fun t -> t.style))
     ; other_attrs = List.concat_map t_list ~f:(fun t -> t.other_attrs)
     }
 

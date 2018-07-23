@@ -268,7 +268,7 @@ let view (model : Model.t Incr.t) ~inject : Vdom.Node.t Incr.t =
       let string =
         String.strip ~drop:(fun c -> Char.equal c '"') (Error.to_string_hum err)
       in
-      Node.div [Attr.style ["color","red"]] [ Node.text string ]
+      Node.div [Attr.style (Css.color (`Name "red"))] [ Node.text string ]
     in
     match Form.State.error state id with
     | None -> no_err_node :: children
@@ -323,7 +323,7 @@ let view (model : Model.t Incr.t) ~inject : Vdom.Node.t Incr.t =
            ; Node.div []
                ((Node.div [] [Node.text "Office"]) ::
                 (
-                  let attr = [Attr.style ["margin-left","1em"]] in
+                  let attr = [Attr.style (Css.margin_left (`Em 1)) ] in
                   Form.Input.radio_button state office_id attr
                   |> List.concat_map ~f:(fun (opt, node) ->
                     [ node

@@ -100,7 +100,7 @@ let view t (view_spec:View_spec.t) =
         Node.tr []
           [ Node.td
               [ Attr.create "colspan" "2"
-              ; Css.(text_align `Center |> to_attr)
+              ; Css.text_align `Center |> Attr.style
               ]
               [ view_spec.group_name group_name ]
           ]

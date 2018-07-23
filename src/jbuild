@@ -5,9 +5,9 @@
   (libraries (
     async_kernel
     async_js
+    css
     js_of_ocaml
     incr_dom
-    incr_dom_widgets_common
     incremental_kernel
     incr_map
     incr_select

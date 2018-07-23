@@ -3,13 +3,13 @@ open! Import
 
 module Attrs : sig
   type t =
-    { style : (string * string) list
+    { style : Css.t
     (* [attrs] should not contain a [style] attribute, or it may be overwritten *)
     ; other_attrs : Vdom.Attr.t list
     }
 
   val create
-    :  ?style : (string * string) list
+    :  ?style : Css.t
     -> ?attrs : Vdom.Attr.t list
     -> unit
     -> t
