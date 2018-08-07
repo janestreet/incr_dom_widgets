@@ -162,8 +162,8 @@ module Primitives = struct
 
   let bootstrap_text_attrs = [ ]
   let bootstrap_text_area_attrs = [ Attr.class_ "textarea" ]
-  let bootstrap_button_attrs = [ Attr.class_ "btn btn-primary" ]
-  let bootstrap_dropdown_attrs = [ Attr.class_ "btn btn-outline-primary btn-sm dropdown-toggle" ]
+  let bootstrap_button_attrs = [ Attr.classes ["btn"; "btn-primary"] ]
+  let bootstrap_dropdown_attrs = [ Attr.classes ["btn";"btn-outline-primary";"btn-sm";"dropdown-toggle" ]]
 
   let default_text_attrs = []
   let default_text_area_attrs = []

@@ -1088,11 +1088,11 @@ let%test_module _ = (module struct
 
     val equal     : t -> t -> bool
     val sexp_of_t : t -> Sexp.t
-    val gen       : t Quickcheck.Generator.t
+    val quickcheck_generator       : t Quickcheck.Generator.t
   end
 
   let test_form_randomly (type a) (module M : M with type t = a) form =
-    let values = Sequence.take (Quickcheck.random_sequence M.gen) 100 in
+    let values = Sequence.take (Quickcheck.random_sequence M.quickcheck_generator) 100 in
     test_sequence ~form ~values ~sexp_of_t:M.sexp_of_t ~equal:M.equal
   ;;
 

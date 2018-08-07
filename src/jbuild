@@ -5,7 +5,7 @@
   (libraries (
     async_kernel
     async_js
-    css
+    virtual_dom.css
     js_of_ocaml
     incr_dom
     incremental_kernel
