@@ -62,6 +62,8 @@ val to_interactive
 *)
 module Case : sig
   type 'a t
+
+  val map : 'a t -> f:('a -> 'b) -> 'b t
 end
 
 (** [('record, 'a) Record_builder.t] is implemented as a ['a Sexp_form.t].

@@ -14,7 +14,7 @@ depends: [
   "incr_dom"
   "incr_map"
   "incr_select"
-  "incremental_kernel"
+  "incremental"
   "ppx_jane"
   "record_builder"
   "splay_tree"

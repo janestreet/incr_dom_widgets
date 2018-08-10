@@ -32,6 +32,9 @@ module Condition : sig
 
   (** [has_target_id] returns true if the event target has the given id *)
   val has_target_id : id:string -> t
+
+  (** [has_target_class] returns true if the event target has the given class *)
+  val has_target_class : class_:string -> t
 end
 
 module Handler : sig

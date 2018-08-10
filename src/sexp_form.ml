@@ -273,6 +273,10 @@ module Case = struct
     Fields.create ~name ~inner ~has_been_applied
   ;;
 
+  let map t ~f =
+    { t with inner = T.map t.inner ~f }
+  ;;
+
   let of_variant v =
     let { Variantslib.Variant.
           name

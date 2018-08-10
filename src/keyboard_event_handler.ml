@@ -16,6 +16,9 @@ module Condition = struct
   let get_target_id ev =
     Option.map (get_target ev) ~f:(fun elem -> Js.to_string elem##.id)
 
+  let get_target_class_list ev =
+    Option.map (get_target ev) ~f:(fun elem -> elem##.classList)
+
   let input_cond ev ~on_input ~on_textarea =
     match get_target ev with
     | None      -> false
@@ -38,6 +41,11 @@ module Condition = struct
     match get_target_id ev with
     | None           -> false
     | Some target_id -> String.equal id target_id
+
+  let has_target_class ~class_ ev =
+    match get_target_class_list ev with
+    | None            -> false
+    | Some class_list -> Js.to_bool (class_list##contains (Js.string class_))
 end
 
 module Handler = struct

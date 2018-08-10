@@ -8,7 +8,7 @@
     virtual_dom.css
     js_of_ocaml
     incr_dom
-    incremental_kernel
+    incremental
     incr_map
     incr_select
     record_builder
