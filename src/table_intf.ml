@@ -241,21 +241,6 @@ module type S = sig
     val get_tbody_rect : t -> float Js_misc.Rect.t option
   end
 
-  module Derived_model : sig
-    type 'a t
-
-    val create
-      :  Model.t Incr.t
-      -> rows:'a Row_id.Map.t Incr.t
-      (** This is a list and not a map so the app can decide order *)
-      -> columns:(Column_id.t * 'a Column.t) list Incr.t
-      -> 'a t Incr.t
-
-    val sorted_rows   : 'a t -> 'a Key.Map.t
-    val sort_criteria : 'a t -> 'a Column.t Sort_criteria.t
-    val scroll_region : _ t -> Scroll_region.t option
-  end
-
   module Action : sig
     type t [@@deriving sexp, compare]
 
@@ -270,19 +255,190 @@ module type S = sig
     val page_focus_row : Focus_dir.t -> t
   end
 
-  (** [current_key d row_id] returns [row_id]'s [Key.t] associated with the current sort
-      criteria of [d]. Returns [None] if [row_id] does not exist in [d] *)
-  val current_key
-    :  _ Derived_model.t
-    -> row_id:Row_id.t
-    -> Key.t option
+  (** Used to expose some extra information about a component that's useful for
+      applications that need more control over scrolling, sorting and focus management. *)
+  module Extra : sig
+    type 'a t
 
-  (** Functions [scroll_*_into_scroll_region] and [scroll_*_to_position] will always work if
-      the row heights in the model are correct (either because the row height estimate is
-      correct for all rows, or because all rows have already been rendered and measured).
-      If the row heights in the model are off, it may take multiple iterations of calling
-      the scroll function and then remeasuring row heights in [update_visibility] before
-      the specified element is successfully scrolled to its target. *)
+    val sorted_rows   : 'a t -> 'a Key.Map.t
+
+    val sort_criteria : 'a t -> 'a Column.t Sort_criteria.t
+
+    val scroll_region : _ t -> Scroll_region.t option
+
+    (** [current_key d row_id] returns [row_id]'s [Key.t] associated with the current sort
+        criteria of [d]. Returns [None] if [row_id] does not exist in [d] *)
+    val current_key
+      :  _ t
+      -> row_id:Row_id.t
+      -> Key.t option
+
+    (** Functions [scroll_*_into_scroll_region] and [scroll_*_to_position] will always
+        work if the row heights in the model are correct (either because the row height
+        estimate is correct for all rows, or because all rows have already been rendered
+        and measured).  If the row heights in the model are off, it may take multiple
+        iterations of calling the scroll function and then remeasuring row heights in
+        [update_visibility] before the specified element is successfully scrolled to its
+        target. *)
+
+    val scroll_row_into_scroll_region
+      :  Model.t
+      -> _ t
+      -> Row_id.t
+      -> Scroll_result.t
+
+    val scroll_col_into_scroll_region
+      :  Model.t
+      -> _ t
+      -> Column_id.t
+      -> Scroll_result.t
+
+    val scroll_focus_into_scroll_region
+      :  Model.t
+      -> _ t
+      -> Scroll_result.t
+
+    val scroll_row_to_position
+      :  ?keep_in_scroll_region:unit
+      -> Model.t
+      -> _ t
+      -> Row_id.t
+      -> position:float
+      -> Scroll_result.t
+
+    val scroll_col_to_position
+      :  ?keep_in_scroll_region:unit
+      -> Model.t
+      -> _ t
+      -> Column_id.t
+      -> position:float
+      -> Scroll_result.t
+
+    val scroll_focus_to_position
+      :  ?keep_in_scroll_region:unit
+      -> Model.t
+      -> _ t
+      -> position:(float * float)
+      -> Scroll_result.t
+
+    (** Functions [*_is_in_scroll_region] and [get_*_position] return [None] if the
+        specified element is not found (e.g. there is no focus, or there is no row/column
+        with the given id), or if the visibility measurements are not yet available.
+
+        By default, the model's scroll margin is used to compute the bounds of the scroll
+        region. However, if a [scroll_margin] argument is given, that will be use instead.
+    *)
+
+    val focus_is_in_scroll_region
+      :  ?scroll_margin:Margin.t
+      -> Model.t
+      -> _ t
+      -> bool option
+
+    val get_focus_position
+      : Model.t
+      -> _ t
+      -> float option * float option
+
+    (** Returns the bounding client rectangle of the currently focused cell, if any.
+        This only returns a value if both the focus row and focus column are set. *)
+    val get_focus_rect
+      : Model.t
+      ->  _ t
+      -> float Js_misc.Rect.t option
+
+    (** Finds the row id at a given vertical position on the page, or indicates that the
+        position is before/after all the rows in the table.
+        It only returns [None] if the model has no visibility info. *)
+    val find_row_by_position
+      : Model.t
+      -> _ t
+      -> float
+      -> [ `Before | `At of Row_id.t | `After ] option
+
+    (** Finds the column id at a given horizontal position on the page, or indicates that
+        the position is before/after all the columns in the table.
+        It only returns [None] if the model has no visibility info or if a call to
+        [Dom_html.getElementById_opt] on a header cell id returns [None]. *)
+    val find_col_by_position
+      :  Model.t
+      -> _ t
+      -> float
+      -> [ `Before | `At of Column_id.t | `After ] option
+  end
+
+  val set_focus_row : Model.t -> Row_id.t option -> Model.t
+  val set_focus_col : Model.t -> Column_id.t option -> Model.t
+
+  (** When constructing the row [Vdom.Node.t] (most likely using function [Vdom.Node.tr]),
+      it is important to pass in the argument [~key:id]. Otherwise scrolling may have
+      unexpected behavior. *)
+  type 'a row_renderer
+    =  row_id:Row_id.t
+    -> row:'a Incr.t
+    -> Row_node_spec.t Incr.t
+
+  type 'row t = (Action.t, Model.t, unit, 'row Extra.t) Component.with_extra
+
+  (** Returns a [Component.with_extra] with [Extra.t] as the extra value. The extra value
+      is not needed for most applications using the Table.
+
+      The input render_row should render <tr> nodes, and attrs should be a list of Vdom
+      attributes for the table.  *)
+  val create
+    : ?override_header_on_click:(Column_id.t -> Dom_html.mouseEvent Js.t -> Vdom.Event.t)
+    -> Model.t Incr.t
+    -> old_model:Model.t option Incr.t
+    (** old_model can be set to None if the previous model did not exist or was in an
+        error state. *)
+    -> inject:(Action.t -> Vdom.Event.t)
+    -> rows:'row Row_id.Map.t Incr.t
+    -> columns:(Column_id.t * 'row Column.t) list Incr.t
+    (** This is a list and not a map so the app can decide order *)
+    -> render_row:'row row_renderer
+    -> attrs:Vdom.Attr.t list
+    -> 'row t Incr.t
+
+  module Derived_model : sig
+    type 'a t = 'a Extra.t
+
+    val create
+      :  Model.t Incr.t
+      -> rows:'a Row_id.Map.t Incr.t
+      (** This is a list and not a map so the app can decide order *)
+      -> columns:(Column_id.t * 'a Column.t) list Incr.t
+      -> 'a t Incr.t
+
+    val sorted_rows   : 'a t -> 'a Key.Map.t
+    val sort_criteria : 'a t -> 'a Column.t Sort_criteria.t
+    val scroll_region : _ t -> Scroll_region.t option
+  end
+
+  (** Used for scrolling to rows/columns upon focusing them *)
+  val on_display
+    :  old_model:Model.t
+    -> Model.t
+    -> _ Derived_model.t
+    -> unit
+
+  (** Used to handle sort column clicking *)
+  val apply_action : Model.t -> _ Derived_model.t -> Action.t -> Model.t
+
+  (** Measures rows, table and viewport *)
+  val update_visibility : Model.t -> _ Derived_model.t -> Model.t
+
+  (** Returns a full partially-rendered <table> node with header. [render_row] function
+      should render <tr> nodes. *)
+  val view
+    :  ?override_header_on_click:(Column_id.t -> Dom_html.mouseEvent Js.t -> Vdom.Event.t)
+    -> Model.t Incr.t
+    -> 'a Derived_model.t Incr.t
+    -> render_row:'a row_renderer
+    -> inject:(Action.t -> Vdom.Event.t)
+    -> attrs:Vdom.Attr.t list
+    -> Vdom.Node.t Incr.t
+
+  val current_key : _ Derived_model.t -> row_id:Row_id.t -> Key.t option
 
   val scroll_row_into_scroll_region
     :  Model.t
@@ -296,10 +452,17 @@ module type S = sig
     -> Column_id.t
     -> Scroll_result.t
 
-  val scroll_focus_into_scroll_region
-    :  Model.t
+  val scroll_focus_into_scroll_region : Model.t -> _ Derived_model.t -> Scroll_result.t
+
+  val focus_is_in_scroll_region
+    :  ?scroll_margin:Margin.t
+    -> Model.t
     -> _ Derived_model.t
-    -> Scroll_result.t
+    -> bool option
+
+  val get_focus_position : Model.t -> _ Derived_model.t -> float option * float option
+
+  val get_focus_rect : Model.t -> _ Derived_model.t -> float Js_misc.Rect.t option
 
   val scroll_row_to_position
     :  ?keep_in_scroll_region:unit
@@ -321,113 +484,20 @@ module type S = sig
     :  ?keep_in_scroll_region:unit
     -> Model.t
     -> _ Derived_model.t
-    -> position:(float * float)
+    -> position:float * float
     -> Scroll_result.t
 
-  (** Functions [*_is_in_scroll_region] and [get_*_position] return [None] if the
-      specified element is not found (e.g. there is no focus, or there is no row/column
-      with the given id), or if the visibility measurements are not yet available.
-
-      By default, the model's scroll margin is used to compute the bounds of the scroll
-      region. However, if a [scroll_margin] argument is given, that will be use instead.
-  *)
-
-  val row_is_in_scroll_region
-    :  ?scroll_margin:Margin.t
-    -> Model.t
-    -> _ Derived_model.t
-    -> Row_id.t
-    -> bool option
-
-  val col_is_in_scroll_region
-    :  ?scroll_margin:Margin.t
-    -> Model.t
-    -> _ Derived_model.t
-    -> Column_id.t
-    -> bool option
-
-  val focus_is_in_scroll_region
-    :  ?scroll_margin:Margin.t
-    -> Model.t
-    -> _ Derived_model.t
-    -> bool option
-
-  val get_row_position
-    :  _ Derived_model.t
-    -> Row_id.t
-    -> float option
-
-  val get_col_position
-    :  Model.t
-    -> _ Derived_model.t
-    -> Column_id.t
-    -> float option
-
-  val get_focus_position
-    :  Model.t
-    -> _ Derived_model.t
-    -> float option * float option
-
-  (** Returns the bounding client rectangle of the currently focused cell, if any.
-      This only returns a value if both the focus row and focus column are set. *)
-  val get_focus_rect
-    :  Model.t
-    -> _ Derived_model.t
-    -> float Js_misc.Rect.t option
-
-  (** Finds the row id at a given vertical position on the page, or indicates that the
-      position is before/after all the rows in the table.
-      It only returns [None] if the model has no visibility info. *)
   val find_row_by_position
     :  Model.t
     -> _ Derived_model.t
     -> float
-    -> [ `Before | `At of Row_id.t | `After ] option
+    -> [`Before | `At of Row_id.t | `After] option
 
-  (** Finds the column id at a given horizontal position on the page, or indicates that
-      the position is before/after all the columns in the table.
-      It only returns [None] if the model has no visibility info or if a call to
-      [Dom_html.getElementById_opt] on a header cell id returns [None]. *)
   val find_col_by_position
     :  Model.t
     -> _ Derived_model.t
     -> float
-    -> [ `Before | `At of Column_id.t | `After ] option
-
-  (** Used for scrolling to rows/columns upon focusing them *)
-  val on_display
-    :  old_model:Model.t
-    -> Model.t
-    -> _ Derived_model.t
-    -> unit
-
-  (** Used to handle sort column clicking *)
-  val apply_action : Model.t -> _ Derived_model.t -> Action.t -> Model.t
-
-  val set_focus_row : Model.t -> Row_id.t option -> Model.t
-  val set_focus_col : Model.t -> Column_id.t option -> Model.t
-
-  (** Measures rows, table and viewport *)
-  val update_visibility : Model.t -> _ Derived_model.t -> Model.t
-
-  (** When constructing the row [Vdom.Node.t] (most likely using function [Vdom.Node.tr]),
-      it is important to pass in the argument [~key:id]. Otherwise scrolling may have
-      unexpected behavior. *)
-  type 'a row_renderer
-    =  row_id:Row_id.t
-    -> row:'a Incr.t
-    -> Row_node_spec.t Incr.t
-
-  (** Returns a full partially-rendered <table> node with header. [render_row] function
-      should render <tr> nodes. *)
-  val view
-    :  ?override_header_on_click:(Column_id.t -> Dom_html.mouseEvent Js.t -> Vdom.Event.t)
-    -> Model.t Incr.t
-    -> 'a Derived_model.t Incr.t
-    -> render_row:'a row_renderer
-    -> inject:(Action.t -> Vdom.Event.t)
-    -> attrs:Vdom.Attr.t list
-    -> Vdom.Node.t Incr.t
+    -> [`Before | `At of Column_id.t | `After] option
 end
 
 module type Table = sig

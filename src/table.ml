@@ -256,52 +256,73 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       Option.map t.visibility_info ~f:Visibility_info.tbody_rect
   end
 
-  module Derived_model = struct
+  module Action = struct
+    type t =
+      | Sort_column_clicked of Column_id.t
+      | Move_focus_row of Focus_dir.t
+      | Move_focus_col of Focus_dir.t
+      | Set_focus_row of Row_id.t option
+      | Set_focus_col of Column_id.t option
+      | Page_focus_row of Focus_dir.t
+    [@@deriving sexp, compare, variants]
+
+  end
+
+  type 'a row_renderer = row_id:Row_id.t -> row:'a Incr.t -> Row_node_spec.t Incr.t
+
+  let set_focus_row (m : Model.t) row_id =
+    if [%compare.equal: Row_id.t option] m.focus_row row_id
+    then m
+    else { m with focus_row = row_id }
+  ;;
+
+  let set_focus_col (m : Model.t) col_id =
+    if [%compare.equal: Column_id.t option] m.focus_col col_id
+    then m
+    else { m with focus_col = col_id }
+  ;;
+
+  module Extra_model = struct
     type 'a t =
-      { rows              : 'a Row_id.Map.t
-      ; sorted_rows       : 'a Key.Map.t
-      ; columns           : (Column_id.t * 'a Column.t) Int.Map.t
+      { rows : 'a Row_id.Map.t
+      ; sorted_rows : 'a Key.Map.t
+      ; columns : (Column_id.t * 'a Column.t) Int.Map.t
       ; column_num_lookup : int Column_id.Map.t
-      ; sort_criteria     : 'a Column.t Sort_criteria.t
-      ; row_view          : 'a Row_view.t
-      ; scroll_region     : Scroll_region.t option
-      ; has_col_groups    : bool
-      ; floating_col      : Column_id.t option
-      } [@@deriving fields]
+      ; sort_criteria : 'a Column.t Sort_criteria.t
+      ; row_view : 'a Row_view.t
+      ; scroll_region : Scroll_region.t option
+      ; has_col_groups : bool
+      ; floating_col : Column_id.t option
+      }
+    [@@deriving fields]
+  end
+
+  module Extra_util = struct
+    open Extra_model
 
     let create m ~rows ~(columns : (Column_id.t * _ Column.t) list Incr.t) =
       let scroll_region =
         (* This needs to fire whenever the model or rows change so that it can actually
            find the element [scroll_region] after it is drawn. *)
-        let%map m = m
-        and _ = rows
-        in
+        let%map m = m and _ = rows in
         Scroll_region.of_id (Model.scroll_region m)
       in
       let sort_criteria =
         let%map sort_criteria =
           m >>| Model.sort_criteria |> cutoff [%compare: Base_sort_criteria.t]
-        and columns = columns
-        in
+        and columns = columns in
         Sort_criteria.filter_map sort_criteria ~f:(fun column_id ->
           List.find_map columns ~f:(fun (id, c) ->
-            if [%compare.equal:Column_id.t] id column_id
-            then (Some c) else None
-          )
-        )
+            if [%compare.equal: Column_id.t] id column_id then (Some c) else None))
       in
       let sorted_rows = sort_criteria >>= Key.sort ~rows in
       let measurements =
         let%map visibility_info = m >>| Model.visibility_info in
-        Option.map visibility_info
-          ~f:(fun { Visibility_info. tbody_rect; view_rect; _ } ->
-            { Partial_render_list.Measurements. list_rect = tbody_rect ; view_rect }
-          )
+        Option.map visibility_info ~f:(fun { Visibility_info.tbody_rect; view_rect; _ } ->
+          { Partial_render_list.Measurements.list_rect = tbody_rect; view_rect })
       in
       let floating_col =
-        let%map float_first_col = m >>| Model.float_first_col
-        and columns = columns
-        in
+        let%map float_first_col = m >>| Model.float_first_col and columns = columns in
         if Float_type.is_floating float_first_col
         then (Option.map (List.hd columns) ~f:fst)
         else None
@@ -340,497 +361,468 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; floating_col
       }
     ;;
-  end
 
-  module Action = struct
-    type t =
-      | Sort_column_clicked of Column_id.t
-      | Move_focus_row of Focus_dir.t
-      | Move_focus_col of Focus_dir.t
-      | Set_focus_row of Row_id.t option
-      | Set_focus_col of Column_id.t option
-      | Page_focus_row of Focus_dir.t
-    [@@deriving sexp, compare, variants]
-  end
-
-  type 'a row_renderer
-    =  row_id:Row_id.t
-    -> row:'a Incr.t
-    -> Row_node_spec.t Incr.t
-
-  let current_key (d : _ Derived_model.t) ~row_id =
-    let open Option.Let_syntax in
-    let%map row = Row_id.Map.find d.rows row_id in
-    let sort_criteria = Key.convert_sort_criteria d.sort_criteria row_id row in
-    Key.create sort_criteria row_id
-  ;;
-
-  let move_focus_row m (d : _ Derived_model.t) ~dir =
-    let focus_row =
+    let current_key (t : _ t) ~row_id =
       let open Option.Let_syntax in
-      let focus_key =
-        let%bind row_id = m.Model.focus_row in
-        current_key d ~row_id
-      in
-      let%map ({row_id; _}, _) = Util.move_focus d.sorted_rows focus_key dir in
-      row_id
-    in
-    if Option.is_some focus_row
-    then { m with focus_row }
-    else m
-  ;;
+      let%map row = Row_id.Map.find t.rows row_id in
+      let sort_criteria = Key.convert_sort_criteria t.sort_criteria row_id row in
+      Key.create sort_criteria row_id
+    ;;
 
-  let move_focus_col m (d : _ Derived_model.t) ~dir =
-    let focus_col =
-      let open Option.Let_syntax in
-      let focus_key =
-        let%bind col_id = m.Model.focus_col in
-        Map.find d.column_num_lookup col_id
-      in
-      let%map (_, (col_id, _)) = Util.move_focus d.columns focus_key dir in
-      col_id
-    in
-    if Option.is_some focus_col
-    then { m with focus_col }
-    else m
-  ;;
-
-  let set_focus_row (m : Model.t) row_id =
-    if [%compare.equal:Row_id.t option] m.focus_row row_id
-    then m
-    else { m with focus_row = row_id }
-  ;;
-
-  let set_focus_col (m : Model.t) col_id =
-    if [%compare.equal:Column_id.t option] m.focus_col col_id
-    then m
-    else { m with focus_col = col_id }
-  ;;
-
-  (* Possible offset due to floating header *)
-  let get_top_margin_offset (m : Model.t) =
-    let get_float_elem_size () =
-      Option.map (Dom_html.getElementById_opt m.thead_html_id)
-        ~f:(fun el -> Js_misc.viewport_rect_of_element el |> Js_misc.Rect.float_height)
-    in
-    Float_type.compute_offset m.float_header ~get_float_elem_size
-  ;;
-
-  (* Possible offset due to floating first column *)
-  let get_left_margin_offset (m : Model.t) (d : _ Derived_model.t) ~is_floating_col =
-    if is_floating_col
-    then 0.
-    else (
-      let get_float_elem_size () =
+    let move_focus_row m (t : _ t) ~dir =
+      let focus_row =
         let open Option.Let_syntax in
-        let%bind (_, (first_column_id, _)) = Map.min_elt d.columns in
-        let%map el =
-          Dom_html.getElementById_opt (Html_id.column_header_cell m.id first_column_id)
+        let focus_key =
+          let%bind row_id = m.Model.focus_row in
+          current_key t ~row_id
         in
-        Js_misc.viewport_rect_of_element el |> Js_misc.Rect.float_width
+        let%map ({ row_id; _ }, _) = Util.move_focus t.sorted_rows focus_key dir in
+        row_id
       in
-      Float_type.compute_offset m.float_first_col ~get_float_elem_size
-    )
-  ;;
+      if Option.is_some focus_row then { m with focus_row } else m
+    ;;
 
-  let call_row_scroll_function d ~row_id ~f =
-    Option.map (current_key d ~row_id) ~f:(fun key -> f d.row_view ~key)
-  ;;
-
-  let is_floating_col (d : _ Derived_model.t) column_id =
-    [%compare.equal: Column_id.t option] d.floating_col (Some column_id)
-  ;;
-
-  let call_col_scroll_function ?f_if_currently_floating (m : Model.t) ~column_id ~f
-        ~is_floating_col =
-    let open Option.Let_syntax in
-    let%map cell_rect =
-      let%map header_cell =
-        Dom_html.getElementById_opt (Html_id.column_header_cell m.id column_id)
-      in
-      Js_misc.viewport_rect_of_element header_cell
-    and { tbody_rect; view_rect; _ } = m.visibility_info
-    in
-    let elem_start, elem_end, is_currently_floating =
-      if not is_floating_col
-      then (Js_misc.Rect.left cell_rect, Js_misc.Rect.right cell_rect, false)
-      else begin
-        let left = Js_misc.Rect.left tbody_rect in
-        let width = Js_misc.Rect.float_width cell_rect in
-        let is_currently_floating =
-          match Float_type.px_from_edge m.float_first_col with
-          | None    -> false
-          | Some px ->
-            let float_pos_left  = view_rect.left +. Float.of_int px in
-            let float_pos_right = float_pos_left +. width in
-            Float.(<=) tbody_rect.left float_pos_left &&
-            Float.(>=) tbody_rect.right float_pos_right
+    let move_focus_col m (t : _ t) ~dir =
+      let focus_col =
+        let open Option.Let_syntax in
+        let focus_key =
+          let%bind col_id = m.Model.focus_col in
+          Map.find t.column_num_lookup col_id
         in
-        left, left +. width, is_currently_floating
-      end
-    in
-    let f =
-      match is_currently_floating, f_if_currently_floating with
-      | true, Some f'      -> f'
-      | false, _ | _, None -> f
-    in
-    f ~scroll_region_start:view_rect.left
-      ~scroll_region_end:view_rect.right
-      ~elem_start
-      ~elem_end
-  ;;
+        let%map (_, (col_id, _)) = Util.move_focus t.columns focus_key dir in
+        col_id
+      in
+      if Option.is_some focus_col then { m with focus_col } else m
+    ;;
 
-  let scroll_row_into_scroll_region (m:Model.t) (d : _ Derived_model.t) row_id =
-    let top_margin_offset = get_top_margin_offset m in
-    let f =
-      Row_view.scroll_into_scroll_region
-        ?in_:d.scroll_region
-        ~top_margin:(m.scroll_margin.top +. top_margin_offset)
-        ~bottom_margin:m.scroll_margin.bottom
-    in
-    Option.value (call_row_scroll_function d ~row_id ~f) ~default:`Didn't_scroll
-  ;;
+    (* Possible offset due to floating header *)
+    let get_top_margin_offset (m : Model.t) =
+      let get_float_elem_size () =
+        Option.map (Dom_html.getElementById_opt m.thead_html_id) ~f:(fun el ->
+          Js_misc.viewport_rect_of_element el |> Js_misc.Rect.float_height)
+      in
+      Float_type.compute_offset m.float_header ~get_float_elem_size
+    ;;
 
-  let scroll_col_into_scroll_region (m:Model.t) (d:_ Derived_model.t) column_id =
-    let is_floating_col = is_floating_col d column_id in
-    let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
-    let f =
-      Scroll.scroll_into_region
-        ?in_:d.scroll_region
-        Horizontal
-        ~start_margin:(m.scroll_margin.left +. left_margin_offset)
-        ~end_margin:m.scroll_margin.right
-    in
-    let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
-          ~elem_end:_ =
-      `Didn't_scroll
-    in
-    Option.value
-      (call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col)
-      ~default:`Didn't_scroll
-  ;;
+    (* Possible offset due to floating first column *)
+    let get_left_margin_offset (m : Model.t) (t : _ t) ~is_floating_col =
+      if is_floating_col
+      then 0.
+      else (
+        let get_float_elem_size () =
+          let open Option.Let_syntax in
+          let%bind (_, (first_column_id, _)) = Map.min_elt t.columns in
+          let%map el =
+            Dom_html.getElementById_opt (Html_id.column_header_cell m.id first_column_id)
+          in
+          Js_misc.viewport_rect_of_element el |> Js_misc.Rect.float_width
+        in
+        Float_type.compute_offset m.float_first_col ~get_float_elem_size)
+    ;;
 
-  let scroll_row_to_position ?keep_in_scroll_region (m : Model.t) (d: _ Derived_model.t)
-        row_id ~position =
-    let f =
-      match keep_in_scroll_region with
-      | None    -> Row_view.scroll_to_position ?in_:d.scroll_region ~position
-      | Some () ->
-        let top_margin_offset = get_top_margin_offset m in
-        Row_view.scroll_to_position_and_into_region
-          ?in_:d.scroll_region
-          ~position
+    let call_row_scroll_function d ~row_id ~f =
+      Option.map (current_key d ~row_id) ~f:(fun key -> f d.row_view ~key)
+    ;;
+
+    let is_floating_col (t : _ t) column_id =
+      [%compare.equal: Column_id.t option] t.floating_col (Some column_id)
+    ;;
+
+    let call_col_scroll_function
+          ?f_if_currently_floating
+          (m : Model.t)
+          ~column_id
+          ~f
+          ~is_floating_col
+      =
+      let open Option.Let_syntax in
+      let%map cell_rect =
+        let%map header_cell =
+          Dom_html.getElementById_opt (Html_id.column_header_cell m.id column_id)
+        in
+        Js_misc.viewport_rect_of_element header_cell
+      and { tbody_rect; view_rect; _ } = m.visibility_info in
+      let elem_start, elem_end, is_currently_floating =
+        if not is_floating_col
+        then (Js_misc.Rect.left cell_rect, Js_misc.Rect.right cell_rect, false)
+        else begin
+          let left = Js_misc.Rect.left tbody_rect in
+          let width = Js_misc.Rect.float_width cell_rect in
+          let is_currently_floating =
+            match Float_type.px_from_edge m.float_first_col with
+            | None -> false
+            | Some px ->
+              let float_pos_left = view_rect.left +. Float.of_int px in
+              let float_pos_right = float_pos_left +. width in
+              Float.( <= ) tbody_rect.left float_pos_left
+              && Float.( >= ) tbody_rect.right float_pos_right
+          in
+          left, left +. width, is_currently_floating
+        end
+      in
+      let f =
+        match is_currently_floating, f_if_currently_floating with
+        | true, Some f' -> f'
+        | false, _ | _, None -> f
+      in
+      f
+        ~scroll_region_start:view_rect.left
+        ~scroll_region_end:view_rect.right
+        ~elem_start
+        ~elem_end
+    ;;
+
+    let scroll_row_into_scroll_region (m:Model.t) (t : _ t) row_id =
+      let top_margin_offset = get_top_margin_offset m in
+      let f =
+        Row_view.scroll_into_scroll_region
+          ?in_:t.scroll_region
           ~top_margin:(m.scroll_margin.top +. top_margin_offset)
           ~bottom_margin:m.scroll_margin.bottom
-    in
-    Option.value (call_row_scroll_function d ~row_id ~f) ~default:`Didn't_scroll
-  ;;
+      in
+      Option.value (call_row_scroll_function t ~row_id ~f) ~default:`Didn't_scroll
+    ;;
 
-  let scroll_col_to_position ?keep_in_scroll_region (m:Model.t) (d:_ Derived_model.t)
-        column_id ~position =
-    let is_floating_col = is_floating_col d column_id in
-    let scroll_to_position ~scroll_region_start ~scroll_region_end:_
-          ~elem_start ~elem_end:_ =
-      Scroll.scroll_to_position
-        ?in_:d.scroll_region
-        Horizontal
-        ~position
-        ~scroll_region_start
-        ~elem_start
-    in
-    let scroll_to_position_and_into_region =
-      let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
-      Scroll.scroll_to_position_and_into_region
-        ?in_:d.scroll_region
-        Horizontal
-        ~position
-        ~start_margin:(m.scroll_margin.left +. left_margin_offset)
-        ~end_margin:m.scroll_margin.right
-    in
-    let f, f_if_currently_floating =
-      match keep_in_scroll_region with
-      | None    -> scroll_to_position                , None
-      | Some () -> scroll_to_position_and_into_region, Some scroll_to_position
-    in
-    Option.value
-      (call_col_scroll_function m ~column_id ~f ~is_floating_col ?f_if_currently_floating)
-      ~default:`Didn't_scroll
-  ;;
+    let scroll_col_into_scroll_region (m:Model.t) (t:_ t) column_id =
+      let is_floating_col = is_floating_col t column_id in
+      let left_margin_offset = get_left_margin_offset m t ~is_floating_col in
+      let f =
+        Scroll.scroll_into_region
+          ?in_:t.scroll_region
+          Horizontal
+          ~start_margin:(m.scroll_margin.left +. left_margin_offset)
+          ~end_margin:m.scroll_margin.right
+      in
+      let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
+            ~elem_end:_ =
+        `Didn't_scroll
+      in
+      Option.value
+        (call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col)
+        ~default:`Didn't_scroll
+    ;;
 
-  let row_is_in_scroll_region ?scroll_margin (m : Model.t) (d : _ Derived_model.t) row_id =
-    let top_margin_offset = get_top_margin_offset m in
-    let f =
-      let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
-      Row_view.is_in_region
-        ~top_margin:(scroll_margin.top +. top_margin_offset)
-        ~bottom_margin:scroll_margin.bottom
-    in
-    Option.join (call_row_scroll_function d ~row_id ~f)
-  ;;
+    let scroll_row_to_position ?keep_in_scroll_region (m : Model.t) (t: _ t)
+          row_id ~position =
+      let f =
+        match keep_in_scroll_region with
+        | None    -> Row_view.scroll_to_position ?in_:t.scroll_region ~position
+        | Some () ->
+          let top_margin_offset = get_top_margin_offset m in
+          Row_view.scroll_to_position_and_into_region
+            ?in_:t.scroll_region
+            ~position
+            ~top_margin:(m.scroll_margin.top +. top_margin_offset)
+            ~bottom_margin:m.scroll_margin.bottom
+      in
+      Option.value (call_row_scroll_function t ~row_id ~f) ~default:`Didn't_scroll
+    ;;
 
-  let col_is_in_scroll_region ?scroll_margin (m : Model.t) (d : _ Derived_model.t)
-        column_id =
-    let is_floating_col = is_floating_col d column_id in
-    let left_margin_offset = get_left_margin_offset m d ~is_floating_col in
-    let f =
-      let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
-      Scroll.is_in_region
-        ~start_margin:(scroll_margin.left +. left_margin_offset)
-        ~end_margin:scroll_margin.right
-    in
-    let f_if_currently_floating ~scroll_region_start:_ ~scroll_region_end:_ ~elem_start:_
-          ~elem_end:_ =
-      true
-    in
-    call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col
-  ;;
+    let scroll_col_to_position ?keep_in_scroll_region (m:Model.t) (t:_ t)
+          column_id ~position =
+      let is_floating_col = is_floating_col t column_id in
+      let scroll_to_position ~scroll_region_start ~scroll_region_end:_
+            ~elem_start ~elem_end:_ =
+        Scroll.scroll_to_position
+          ?in_:t.scroll_region
+          Horizontal
+          ~position
+          ~scroll_region_start
+          ~elem_start
+      in
+      let scroll_to_position_and_into_region =
+        let left_margin_offset = get_left_margin_offset m t ~is_floating_col in
+        Scroll.scroll_to_position_and_into_region
+          ?in_:t.scroll_region
+          Horizontal
+          ~position
+          ~start_margin:(m.scroll_margin.left +. left_margin_offset)
+          ~end_margin:m.scroll_margin.right
+      in
+      let f, f_if_currently_floating =
+        match keep_in_scroll_region with
+        | None    -> scroll_to_position                , None
+        | Some () -> scroll_to_position_and_into_region, Some scroll_to_position
+      in
+      Option.value
+        (call_col_scroll_function m ~column_id ~f ~is_floating_col ?f_if_currently_floating)
+        ~default:`Didn't_scroll
+    ;;
 
-  let get_row_position (d:_ Derived_model.t) row_id =
-    let f = Row_view.get_position in
-    Option.join (call_row_scroll_function d ~row_id ~f)
-  ;;
-
-  let get_col_position (m:Model.t) (d: _ Derived_model.t) column_id =
-    let is_floating_col = is_floating_col d column_id in
-    let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end:_ =
-      Scroll.get_position ~scroll_region_start ~elem_start
-    in
-    call_col_scroll_function m ~column_id ~f ~is_floating_col
-  ;;
-
-  let get_row_top_and_bottom (d:_ Derived_model.t) row_id =
-    let f = Row_view.get_top_and_bottom in
-    Option.join (call_row_scroll_function d ~row_id ~f)
-  ;;
-
-  let get_col_left_and_right (m:Model.t) (d: _ Derived_model.t) column_id =
-    let is_floating_col = is_floating_col d column_id in
-    let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end =
-      let left  = Scroll.get_position ~scroll_region_start ~elem_start in
-      left, left +. elem_end -. elem_start
-    in
-    call_col_scroll_function m ~column_id ~f ~is_floating_col
-  ;;
-
-  let scroll_focus_into_scroll_region (m:Model.t) d =
-    let row_scroll =
-      Option.value_map m.focus_row ~default:`Didn't_scroll
-        ~f:(scroll_row_into_scroll_region m d)
-    in
-    let col_scroll =
-      Option.value_map m.focus_col ~default:`Didn't_scroll
-        ~f:(scroll_col_into_scroll_region m d)
-    in
-    Scroll_result.combine row_scroll col_scroll
-  ;;
-
-  let scroll_focus_to_position ?keep_in_scroll_region (m:Model.t) d ~position:(x, y) =
-    let row_scroll =
-      Option.value_map m.focus_row ~default:`Didn't_scroll
-        ~f:(scroll_row_to_position ?keep_in_scroll_region m d ~position:y)
-    in
-    let col_scroll =
-      Option.value_map m.focus_col ~default:`Didn't_scroll
-        ~f:(scroll_col_to_position ?keep_in_scroll_region m d ~position:x)
-    in
-    Scroll_result.combine row_scroll col_scroll
-  ;;
-
-  let page_focus_row (m : Model.t) (d : _ Derived_model.t) ~(dir : Focus_dir.t) =
-    let open Option.Let_syntax in
-    let new_focus_row =
-      let%bind visibility_info = m.visibility_info and focus_row = m.focus_row in
-      let%bind focus_key = current_key d ~row_id:focus_row in
-      let focus_height = Row_view.Height_cache.height m.height_cache focus_key in
-      let scroll_height = Js_misc.Rect.float_height visibility_info.view_rect in
+    let row_is_in_scroll_region ?scroll_margin (m : Model.t) (t : _ t) row_id =
       let top_margin_offset = get_top_margin_offset m in
-      let mult =
-        match dir with
-        | Prev -> -1.
-        | Next ->  1.
+      let f =
+        let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
+        Row_view.is_in_region
+          ~top_margin:(scroll_margin.top +. top_margin_offset)
+          ~bottom_margin:scroll_margin.bottom
       in
-      let offset =
-        mult *. (scroll_height -. focus_height -. top_margin_offset)
+      Option.join (call_row_scroll_function t ~row_id ~f)
+    ;;
+
+    let col_is_in_scroll_region ?scroll_margin (m : Model.t) (t : _ t) column_id =
+      let is_floating_col = is_floating_col t column_id in
+      let left_margin_offset = get_left_margin_offset m t ~is_floating_col in
+      let f =
+        let scroll_margin = Option.value scroll_margin ~default:m.scroll_margin in
+        Scroll.is_in_region
+          ~start_margin:(scroll_margin.left +. left_margin_offset)
+          ~end_margin:scroll_margin.right
       in
-      Row_view.find_by_relative_position d.row_view focus_key ~offset
-    in
-    match new_focus_row with
-    | None     -> m
-    | Some row -> set_focus_row m (Some (Key.row_id row))
-  ;;
+      let f_if_currently_floating
+            ~scroll_region_start:_
+            ~scroll_region_end:_
+            ~elem_start:_
+            ~elem_end:_
+        =
+        true
+      in
+      call_col_scroll_function m ~column_id ~f ~f_if_currently_floating ~is_floating_col
+    ;;
 
-  let focus_is_in_scroll_region ?scroll_margin (m : Model.t) d =
-    let row = Option.bind m.focus_row ~f:(row_is_in_scroll_region ?scroll_margin m d) in
-    let col =
-      Option.bind m.focus_col ~f:(col_is_in_scroll_region ?scroll_margin m d)
-    in
-    match row, col with
-    | None, None       -> None
-    | None, Some b
-    | Some b, None     -> Some b
-    | Some b1, Some b2 -> Some (b1 && b2)
-  ;;
+    let get_row_position (t : _ t) row_id =
+      let f = Row_view.get_position in
+      Option.join (call_row_scroll_function t ~row_id ~f)
+    ;;
 
-  let get_focus_position (m : Model.t) (d : _ Derived_model.t) =
-    Option.bind m.focus_col ~f:(get_col_position m d),
-    Option.bind m.focus_row ~f:(get_row_position   d)
-  ;;
+    let get_col_position (m : Model.t) (t : _ t) column_id =
+      let is_floating_col = is_floating_col t column_id in
+      let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end:_ =
+        Scroll.get_position ~scroll_region_start ~elem_start
+      in
+      call_col_scroll_function m ~column_id ~f ~is_floating_col
+    ;;
 
-  let get_focus_rect (m : Model.t) (d : _ Derived_model.t) =
-    let open Option.Let_syntax in
-    let%bind row_id = m.focus_row and col_id = m.focus_col in
-    let%bind top , bottom = get_row_top_and_bottom   d row_id in
-    let%map  left, right  = get_col_left_and_right m d col_id in
-    { Js_misc.Rect. left; right; top; bottom }
-  ;;
+    let get_row_top_and_bottom (t : _ t) row_id =
+      let f = Row_view.get_top_and_bottom in
+      Option.join (call_row_scroll_function t ~row_id ~f)
+    ;;
 
-  let find_row_by_position (m : Model.t) (d : _ Derived_model.t) position =
-    let open Option.Let_syntax in
-    let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
-    let position = position -. Js_misc.Rect.top tbody_rect in
-    if Float.is_negative position
-    then `Before
-    else (
-      match Row_view.find_by_position d.row_view ~position with
-      | Some { Key. row_id; _ } -> `At row_id
-      | None                    -> `After
-    )
-  ;;
+    let get_col_left_and_right (m : Model.t) (t : _ t) column_id =
+      let is_floating_col = is_floating_col t column_id in
+      let f ~scroll_region_start ~scroll_region_end:_ ~elem_start ~elem_end =
+        let left = Scroll.get_position ~scroll_region_start ~elem_start in
+        left, left +. elem_end -. elem_start
+      in
+      call_col_scroll_function m ~column_id ~f ~is_floating_col
+    ;;
 
-  let find_col_by_position (m : Model.t) (d : _ Derived_model.t) position =
-    let open Option.Let_syntax in
-    List.fold_until (Map.data d.columns) ~init:true
-      ~f:(fun is_first (col_id, _) ->
-        let col_header_rect =
-          let html_id = Html_id.column_header_cell m.id col_id in
-          let%map elem = Dom_html.getElementById_opt html_id in
-          Js_misc.viewport_rect_of_element elem
+    let scroll_focus_into_scroll_region (m:Model.t) d =
+      let row_scroll =
+        Option.value_map m.focus_row ~default:`Didn't_scroll
+          ~f:(scroll_row_into_scroll_region m d)
+      in
+      let col_scroll =
+        Option.value_map m.focus_col ~default:`Didn't_scroll
+          ~f:(scroll_col_into_scroll_region m d)
+      in
+      Scroll_result.combine row_scroll col_scroll
+    ;;
+
+    let scroll_focus_to_position ?keep_in_scroll_region (m:Model.t) d ~position:(x, y) =
+      let row_scroll =
+        Option.value_map m.focus_row ~default:`Didn't_scroll
+          ~f:(scroll_row_to_position ?keep_in_scroll_region m d ~position:y)
+      in
+      let col_scroll =
+        Option.value_map m.focus_col ~default:`Didn't_scroll
+          ~f:(scroll_col_to_position ?keep_in_scroll_region m d ~position:x)
+      in
+      Scroll_result.combine row_scroll col_scroll
+    ;;
+
+    let page_focus_row (m : Model.t) (t : _ t) ~(dir : Focus_dir.t) =
+      let open Option.Let_syntax in
+      let new_focus_row =
+        let%bind visibility_info = m.visibility_info and focus_row = m.focus_row in
+        let%bind focus_key = current_key t ~row_id:focus_row in
+        let focus_height = Row_view.Height_cache.height m.height_cache focus_key in
+        let scroll_height = Js_misc.Rect.float_height visibility_info.view_rect in
+        let top_margin_offset = get_top_margin_offset m in
+        let mult =
+          match dir with
+          | Prev -> -1.
+          | Next -> 1.
         in
-        match col_header_rect with
-        | None      -> Stop None
-        | Some rect ->
-          if is_first && position < Js_misc.Rect.left rect
-          then (Stop (Some `Before))
-          else if position <= Js_misc.Rect.right rect
-          then (Stop (Some (`At col_id)))
-          else (Continue false)
-      )
-      ~finish:(function
-        | false  -> Some `After
-        | true   ->
-          let%map { Visibility_info. tbody_rect; _ } = m.visibility_info in
-          if Float.(<) position (Js_misc.Rect.left tbody_rect)
-          then `Before
-          else `After
-      )
-  ;;
-
-  let on_display ~(old_model:Model.t) (model:Model.t) d =
-    if old_model.focus_row <> model.focus_row || old_model.focus_col <> model.focus_col
-    then (
-      let maybe_scroll x f =
-        Option.iter x ~f:(fun x -> ignore (f model d x : Scroll_result.t))
+        let offset = mult *. (scroll_height -. focus_height -. top_margin_offset) in
+        Row_view.find_by_relative_position t.row_view focus_key ~offset
       in
-      maybe_scroll model.focus_row scroll_row_into_scroll_region ;
-      maybe_scroll model.focus_col scroll_col_into_scroll_region ;
-    )
-  ;;
+      match new_focus_row with
+      | None -> m
+      | Some row -> set_focus_row m (Some (Key.row_id row))
+    ;;
 
-  let sort_column_clicked =
-    Model.cycle_sorting ~next_dir:Sort_dir.next
-  ;;
+    let focus_is_in_scroll_region ?scroll_margin (m : Model.t) (t : _ t) =
+      let row = Option.bind m.focus_row ~f:(row_is_in_scroll_region ?scroll_margin m t) in
+      let col = Option.bind m.focus_col ~f:(col_is_in_scroll_region ?scroll_margin m t) in
+      match row, col with
+      | None, None -> None
+      | None, Some b | Some b, None -> Some b
+      | Some b1, Some b2 -> Some (b1 && b2)
+    ;;
 
-  let apply_action m d (action : Action.t) =
-    match action with
-    | Sort_column_clicked column_id -> sort_column_clicked m column_id
-    | Move_focus_row dir -> move_focus_row m d ~dir
-    | Move_focus_col dir -> move_focus_col m d ~dir
-    | Set_focus_row row_id -> set_focus_row m row_id
-    | Set_focus_col col_id -> set_focus_col m col_id
-    | Page_focus_row dir -> page_focus_row m d ~dir
-  ;;
+    let get_focus_position (m : Model.t) (t : _ t) =
+      ( Option.bind m.focus_col ~f:(get_col_position m t)
+      , Option.bind m.focus_row ~f:(get_row_position t) )
+    ;;
 
-  (** returns the element associated with the row id in question  *)
-  let find_row_element table_id row_id =
-    Dom_html.getElementById_opt (Html_id.row table_id row_id)
+    let get_focus_rect (m : Model.t) (t : _ t) =
+      let open Option.Let_syntax in
+      let%bind row_id = m.focus_row and col_id = m.focus_col in
+      let%bind top, bottom = get_row_top_and_bottom t row_id in
+      let%map left, right = get_col_left_and_right m t col_id in
+      { Js_misc.Rect.left; right; top; bottom }
+    ;;
 
-  let update_col_group_row_height (m : Model.t) (d : _ Derived_model.t) =
-    let has_floating_header () = Float_type.is_floating m.float_header in
-    let height =
-      if not (d.has_col_groups && has_floating_header ())
-      then None
+    let find_row_by_position (m : Model.t) (t : _ t) position =
+      let open Option.Let_syntax in
+      let%map { Visibility_info.tbody_rect; _ } = m.visibility_info in
+      let position = position -. Js_misc.Rect.top tbody_rect in
+      if Float.is_negative position
+      then `Before
       else (
-        let open Option.Let_syntax in
-        let%map column_group  = Dom_html.getElementById_opt (Html_id.column_group m.id)
-        and     column_header = Dom_html.getElementById_opt (Html_id.column_header m.id)
-        in
-        (* We don't use [Js_misc.viewport_rect_of_element] here so that we can round down
-           instead of rounding to the nearest interger. This reduces jitter. *)
-        let column_group_top  = column_group##getBoundingClientRect##.top  in
-        let column_header_top = column_header##getBoundingClientRect##.top in
-        int_of_float (column_header_top -. column_group_top)
-      )
-    in
-    Option.value height ~default:0
+        match Row_view.find_by_position t.row_view ~position with
+        | Some { Key.row_id; _ } -> `At row_id
+        | None -> `After)
+    ;;
 
-  (** Computes and updates the heights of all rows that are currently rendered *)
-  let update_height_cache (m : Model.t) (d : _ Derived_model.t) =
-    Row_view.measure_heights
-      d.row_view
-      ~measure_row:(fun key ->
-        Option.map (find_row_element m.id key.row_id) ~f:(fun el ->
-          let rect = Js_misc.viewport_rect_of_element el in
-          Js_misc.Rect.top rect, Js_misc.Rect.bottom rect
-        )
-      )
-      ~get_row_height:(fun ~prev ~curr ~next ->
-        Option.map curr ~f:(fun (curr_top, curr_bottom) ->
-          let with_top_margin =
-            Option.map (Option.map prev ~f:Tuple2.get2)
-              ~f:(fun prev_bottom -> curr_bottom -. prev_bottom)
+    let find_col_by_position (m : Model.t) (t : _ t) position =
+      let open Option.Let_syntax in
+      List.fold_until
+        (Map.data t.columns)
+        ~init:true
+        ~f:(fun is_first (col_id, _) ->
+          let col_header_rect =
+            let html_id = Html_id.column_header_cell m.id col_id in
+            let%map elem = Dom_html.getElementById_opt html_id in
+            Js_misc.viewport_rect_of_element elem
           in
-          let with_bottom_margin =
-            Option.map (Option.map next ~f:Tuple2.get1)
-              ~f:(fun next_top -> next_top -. curr_top)
-          in
-          match with_top_margin, with_bottom_margin with
-          | Some h1, Some h2 -> (h1 +. h2) /. 2.
-          | Some h, None
-          | None, Some h     -> h
-          | None, None       -> curr_bottom -. curr_top
-        )
-      )
+          match col_header_rect with
+          | None -> Stop None
+          | Some rect ->
+            if is_first && position < Js_misc.Rect.left rect
+            then (Stop (Some `Before))
+            else if position <= Js_misc.Rect.right rect
+            then (Stop (Some (`At col_id)))
+            else (Continue false))
+        ~finish:(function
+          | false -> Some `After
+          | true ->
+            let%map { Visibility_info.tbody_rect; _ } = m.visibility_info in
+            if Float.( < ) position (Js_misc.Rect.left tbody_rect) then `Before else `After)
+    ;;
 
-  let update_visibility_info (m : Model.t) (d : _ Derived_model.t) =
-    let open Option.Let_syntax in
-    let scroll_region =
-      match d.scroll_region with
-      | Some _ as a -> a
-      | None ->
-        Scroll_region.of_id (Model.scroll_region m)
-    in
-    let%map scroll_region = scroll_region
-    and tbody = Dom_html.getElementById_opt m.tbody_html_id
-    in
-    let view_rect =
-      match scroll_region with
-      | Window     -> Js_misc.Rect.map (Js_misc.client_rect ()) ~f:Float.of_int
-      | Element el -> Js_misc.client_rect_of_element el
-    in
-    { Visibility_info.
-      tbody_rect = Js_misc.client_rect_of_element tbody
-    ; view_rect
-    }
+    (** returns the element associated with the row id in question  *)
+    let find_row_element table_id row_id =
+      Dom_html.getElementById_opt (Html_id.row table_id row_id)
 
-  let update_visibility (m : Model.t) d =
-    let visibility_info      = update_visibility_info      m d in
-    let height_cache         = update_height_cache         m d in
-    let col_group_row_height = update_col_group_row_height m d in
-    if [%compare.equal: Visibility_info.t option] visibility_info m.visibility_info
-    && [%compare.equal: Row_view.Height_cache.t] height_cache m.height_cache
-    && [%compare.equal: int] col_group_row_height m.col_group_row_height
-    then m
-    else { m with visibility_info; height_cache; col_group_row_height }
+    let update_col_group_row_height (m : Model.t) (t : _ t) =
+      let has_floating_header () = Float_type.is_floating m.float_header in
+      let height =
+        if not (t.has_col_groups && has_floating_header ())
+        then None
+        else
+          (let open Option.Let_syntax in
+           let%map column_group = Dom_html.getElementById_opt (Html_id.column_group m.id)
+           and column_header = Dom_html.getElementById_opt (Html_id.column_header m.id) in
+           (* We don't use [Js_misc.viewport_rect_of_element] here so that we can round down
+              instead of rounding to the nearest interger. This reduces jitter. *)
+           let column_group_top = column_group##getBoundingClientRect##.top in
+           let column_header_top = column_header##getBoundingClientRect##.top in
+           int_of_float (column_header_top -. column_group_top))
+      in
+      Option.value height ~default:0
+
+    (** Computes and updates the heights of all rows that are currently rendered *)
+    let update_height_cache (m : Model.t) (t : _ t) =
+      Row_view.measure_heights
+        t.row_view
+        ~measure_row:(fun key ->
+          Option.map (find_row_element m.id key.row_id) ~f:(fun el ->
+            let rect = Js_misc.viewport_rect_of_element el in
+            Js_misc.Rect.top rect, Js_misc.Rect.bottom rect))
+        ~get_row_height:(fun ~prev ~curr ~next ->
+          Option.map curr ~f:(fun (curr_top, curr_bottom) ->
+            let with_top_margin =
+              Option.map (Option.map prev ~f:Tuple2.get2) ~f:(fun prev_bottom ->
+                curr_bottom -. prev_bottom)
+            in
+            let with_bottom_margin =
+              Option.map (Option.map next ~f:Tuple2.get1) ~f:(fun next_top ->
+                next_top -. curr_top)
+            in
+            match with_top_margin, with_bottom_margin with
+            | Some h1, Some h2 -> (h1 +. h2) /. 2.
+            | Some h, None | None, Some h -> h
+            | None, None -> curr_bottom -. curr_top))
+
+    let update_visibility_info (m : Model.t) (t : _ t) =
+      let open Option.Let_syntax in
+      let scroll_region =
+        match t.scroll_region with
+        | Some _ as a -> a
+        | None -> Scroll_region.of_id (Model.scroll_region m)
+      in
+      let%map scroll_region = scroll_region
+      and tbody = Dom_html.getElementById_opt m.tbody_html_id in
+      let view_rect =
+        match scroll_region with
+        | Window -> Js_misc.Rect.map (Js_misc.client_rect ()) ~f:Float.of_int
+        | Element el -> Js_misc.client_rect_of_element el
+      in
+      { Visibility_info.tbody_rect = Js_misc.client_rect_of_element tbody; view_rect }
+
+  end
+
+  module Extra = struct
+    include Extra_model
+    include Extra_util
+  end
+
+  include Extra_util
+
+  let on_display ~(old_model : Model.t option Incr.t) (model : Model.t Incr.t) extra =
+    let%map old_focus_row = old_model >>| Option.map ~f:Model.focus_row
+    and focus_row = model >>| Model.focus_row
+    and old_focus_col = old_model >>| Option.map ~f:Model.focus_col
+    and focus_col = model >>| Model.focus_col
+    and extra = extra
+    and model = model in
+    fun () ->
+      if old_focus_row <> Some focus_row || old_focus_col <> Some focus_col
+      then (
+        let maybe_scroll x f = Option.iter x ~f:(fun x -> ignore (f extra x)) in
+        maybe_scroll focus_row (Extra.scroll_row_into_scroll_region model);
+        maybe_scroll focus_col (Extra.scroll_col_into_scroll_region model))
+  ;;
+
+  let sort_column_clicked = Model.cycle_sorting ~next_dir:Sort_dir.next
+
+  let apply_action m extra =
+    let open Extra in
+    let%map m = m  and extra = extra in
+    fun (action : Action.t) ->
+      match action with
+      | Sort_column_clicked column_id -> sort_column_clicked m column_id
+      | Move_focus_row dir -> move_focus_row m extra ~dir
+      | Move_focus_col dir -> move_focus_col m extra ~dir
+      | Set_focus_row row_id -> set_focus_row m row_id
+      | Set_focus_col col_id -> set_focus_col m col_id
+      | Page_focus_row dir -> page_focus_row m extra ~dir
+  ;;
+
+  let update_visibility (m : Model.t Incr.t) extra =
+    let%map m = m and extra = extra in
+    fun () ->
+      let visibility_info = Extra.update_visibility_info m extra in
+      let height_cache = Extra.update_height_cache m extra in
+      let col_group_row_height = Extra.update_col_group_row_height m extra in
+      if [%compare.equal: Visibility_info.t option] visibility_info m.visibility_info
+      && [%compare.equal: Row_view.Height_cache.t] height_cache m.height_cache
+      && [%compare.equal: int] col_group_row_height m.col_group_row_height
+      then m
+      else { m with visibility_info; height_cache; col_group_row_height }
+  ;;
 
   let spacer ~key =
     let id_attr = Attr.id (Html_id.spacer key) in
@@ -1040,12 +1032,12 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let view ?override_header_on_click m d ~render_row ~inject ~attrs =
     let spacer_before = unstage (spacer ~key:"before") in
     let spacer_after  = unstage (spacer ~key:"after")  in
-    let columns = d >>| Derived_model.columns in
+    let columns = d >>| Extra.columns in
     let column_ids =
-      let%map column_ids = d >>| Derived_model.columns in
+      let%map column_ids = d >>| Extra.columns in
       List.map (Map.data column_ids) ~f:fst
     in
-    let row_view = d >>| Derived_model.row_view in
+    let row_view = d >>| Extra.row_view in
     let%bind table_id = m >>| Model.id
     and      top_sticky_pos  = sticky_pos (m >>| Model.float_header)
     and      left_sticky_pos = sticky_pos (m >>| Model.float_first_col)
@@ -1070,6 +1062,61 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
            @ spacer_after after_height)
       ]
   ;;
+
+  type 'a t = (Action.t, Model.t, unit, 'a Extra.t) Component.with_extra
+
+  let create
+        ?override_header_on_click
+        model
+        ~old_model
+        ~inject
+        ~rows
+        ~columns
+        ~render_row
+        ~attrs
+    =
+    let extra = Extra.create model ~rows ~columns in
+    let%map apply_action =
+      let%map apply_action = apply_action model extra in
+      fun action _ ~schedule_action:_ -> apply_action action
+    and on_display =
+      let%map on_display = on_display ~old_model model extra in
+      fun _ ~schedule_action:_ -> on_display ()
+    and update_visibility = update_visibility model extra
+    and view = view ?override_header_on_click model extra ~render_row ~inject ~attrs
+    and extra = extra
+    and model = model in
+    Component.create_with_extra
+      ~on_display ~update_visibility ~apply_action ~extra model view
+  ;;
+
+  module Derived_model = Extra
+
+  let on_display ~(old_model : Model.t) (m : Model.t) d =
+    if old_model.focus_row <> m.focus_row || old_model.focus_col <> m.focus_col
+    then (
+      let maybe_scroll x f = Option.iter x ~f:(fun x -> ignore (f d x)) in
+      maybe_scroll m.focus_row (Extra.scroll_row_into_scroll_region m);
+      maybe_scroll m.focus_col (Extra.scroll_col_into_scroll_region m))
+
+  let apply_action m d (action : Action.t) =
+    match action with
+    | Sort_column_clicked column_id -> sort_column_clicked m column_id
+    | Move_focus_row dir -> Extra.move_focus_row m d ~dir
+    | Move_focus_col dir -> Extra.move_focus_col m d ~dir
+    | Set_focus_row row_id -> set_focus_row m row_id
+    | Set_focus_col col_id -> set_focus_col m col_id
+    | Page_focus_row dir -> Extra.page_focus_row m d ~dir
+
+  let update_visibility m d =
+    let visibility_info = Extra.update_visibility_info m d in
+    let height_cache = Extra.update_height_cache m d in
+    let col_group_row_height = Extra.update_col_group_row_height m d in
+    if [%compare.equal: Visibility_info.t option] visibility_info m.visibility_info
+    && [%compare.equal: Row_view.Height_cache.t] height_cache m.height_cache
+    && [%compare.equal: int] col_group_row_height m.col_group_row_height
+    then m
+    else { m with visibility_info; height_cache; col_group_row_height }
 end
 
 module Default_sort_spec = struct
@@ -1083,11 +1130,14 @@ module Default_sort_spec = struct
   end
 
   module Sort_dir = struct
-    type t = Ascending | Descending [@@deriving sexp, compare]
+    type t =
+        Ascending
+      | Descending
+    [@@deriving sexp, compare]
 
     let next = function
-      | None            -> Some Ascending
-      | Some Ascending  -> Some Descending
+      | None -> Some Ascending
+      | Some Ascending -> Some Descending
       | Some Descending -> None
 
     let indicator t ~precedence =
@@ -1105,19 +1155,19 @@ module Default_sort_spec = struct
 
     let class_ t ~precedence:_ =
       match t with
-      | Ascending  -> Some "sorted-asc"
+      | Ascending -> Some "sorted-asc"
       | Descending -> Some "sorted-desc"
 
     let sign = function
-      | Ascending  -> 1
+      | Ascending -> 1
       | Descending -> -1
   end
 
   let compare_keys dir k1 k2 =
-    match (k1:Sort_key.t), (k2:Sort_key.t) with
+    match (k1 : Sort_key.t), (k2 : Sort_key.t) with
     (** Always sort nulls last regardless of the sort direction *)
     | Null, _ | _, Null -> Sort_key.compare k1 k2
-    | _, _              -> Sort_key.compare k1 k2 * Sort_dir.sign dir
+    | _, _ -> Sort_key.compare k1 k2 * Sort_dir.sign dir
 
   let compare_rows_if_equal_keys ~cmp_row_id dir r1 r2 =
     cmp_row_id r1 r2 * Sort_dir.sign dir
