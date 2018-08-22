@@ -20,6 +20,25 @@ module type Key = sig
   include Comparable.S with type t := t
 end
 
+(** [Row_id.t] is used to uniquely identify rows, while [Sort_key.t] is used to sort them.
+
+    If the order of your rows frequently changes, you can use [Row_id.t] to uniquely
+    identify a row even as its [Sort_key.t] value changes.
+    This is useful for preserving the measured heights in [Height_cache] as row values
+    change, causing rows to get reordered.
+
+    In simple cases, [Row_id] and [Sort_key] can be the same (use [Make_simple] for this).
+*)
+
+module type Row_id = Key
+
+module type Sort_key = sig
+  include Key
+
+  type row_id
+  val row_id : t -> row_id
+end
+
 (** [Partial_render_list] provides common functionality for partially rendering large (e.g
     10_000 rows) lists or tables. It allows apps to measure and cache the height of each
     row and incrementally compute which rows to show while scrolling. It puts spacers
@@ -34,7 +53,8 @@ end
     See lib/incr_dom/examples/ts_gui for a demonstration of how to use of this module.
 *)
 module type S = sig
-  module Key : Key
+  module Row_id   : Key
+  module Sort_key : Key
 
   (** Height_cache keeps track of the rendered height of items so that scrolling
       to a given position can decide which elements to render accurately. This allows
@@ -49,7 +69,8 @@ module type S = sig
       that is not in the cache. Rows that are measured to be exactly [height_guess] tall
       will not even be added to the cache. If most of your rows are a certain size you
       should determine the exact height returned to [measure_heights] in the typical case
-      and use that as your guess. *)
+      and use that as your guess.
+  *)
   module Height_cache : sig
     type t [@@deriving compare, sexp_of]
 
@@ -57,27 +78,27 @@ module type S = sig
 
     (** [height t key] will return the actual height of [key] if available, otherwise it
         returns [height_guess] *)
-    val height : t -> Key.t -> float
+    val height : t -> Row_id.t -> float
   end
 
   (** Meant to be stored in the derived model *)
   type 'v t
 
   val create
-    :  rows:'v Key.Map.t Incr.t
+    :  rows:'v Sort_key.Map.t Incr.t
     -> height_cache:Height_cache.t Incr.t
     -> measurements:Measurements.t option Incr.t
     -> 'v t Incr.t
 
-  val find_by_position : _ t -> position:float -> Key.t option
+  val find_by_position : _ t -> position:float -> Sort_key.t option
 
   (* [find_by_relative_position t key ~offset] returns the key at a distance of
      approximately [offset] away from [key], preferring closer elements to farther ones.
      If the offset extends past the end of the list, the end key is returned instead. *)
-  val find_by_relative_position : _ t -> Key.t -> offset:float -> Key.t option
+  val find_by_relative_position : _ t -> Sort_key.t -> offset:float -> Sort_key.t option
 
   (** Meant for rendering, apps should normally use Incr.Map.mapi' on this *)
-  val rows_to_render : 'v t -> 'v Key.Map.t
+  val rows_to_render : 'v t -> 'v Sort_key.Map.t
 
   (** (top, bottom) spacer pixel heights to put the rendered rows in the right place *)
   val spacer_heights : _ t Incr.t -> (float * float) Incr.t
@@ -93,14 +114,14 @@ module type S = sig
     -> _ t
     -> top_margin    : float
     -> bottom_margin : float
-    -> key           : Key.t
+    -> key           : Sort_key.t
     -> Scroll_result.t
 
   val scroll_to_position
     :  ?in_     : Scroll_region.t
     -> _ t
     -> position : float
-    -> key      : Key.t
+    -> key      : Sort_key.t
     -> Scroll_result.t
 
   val scroll_to_position_and_into_region
@@ -109,7 +130,7 @@ module type S = sig
     -> position      : float
     -> top_margin    : float
     -> bottom_margin : float
-    -> key           : Key.t
+    -> key           : Sort_key.t
     -> Scroll_result.t
 
   (** [is_in_region] and [get_position] return [None] if the given key does not exist or
@@ -119,17 +140,17 @@ module type S = sig
     :  _ t
     -> top_margin    : float
     -> bottom_margin : float
-    -> key           : Key.t
+    -> key           : Sort_key.t
     -> bool option
 
   val get_position
     :  _ t
-    -> key : Key.t
+    -> key : Sort_key.t
     -> float option
 
   val get_top_and_bottom
     :  _ t
-    -> key : Key.t
+    -> key : Sort_key.t
     -> (float * float) option
 
   (** [measure_heights_simple] updates a height cache by measuring the rendered elements,
@@ -140,7 +161,7 @@ module type S = sig
   *)
   val measure_heights_simple
     :  _ t
-    -> measure:(Key.t -> float option)
+    -> measure:(Sort_key.t -> float option)
     -> Height_cache.t
 
   (** [measure_heights] is like [measure_heights_simple], but allows the app to use the
@@ -155,15 +176,24 @@ module type S = sig
   *)
   val measure_heights
     :  _ t
-    -> measure_row:(Key.t -> 'm option)
+    -> measure_row:(Sort_key.t -> 'm option)
     -> get_row_height:(prev:'m option -> curr:'m option -> next:'m option -> float option)
     -> Height_cache.t
 end
 
 module type Partial_render_list = sig
-  module type S = S
-  module type Key = Key
-  module Interval = Interval
+  module type S        = S
+  module type Row_id   = Row_id
+  module type Sort_key = Sort_key
+
+  module Interval     = Interval
   module Measurements = Measurements
-  module Make (Key : Key) : (S with module Key = Key)
+
+  module Make (Row_id : Row_id) (Sort_key : Sort_key with type row_id := Row_id.t) : S
+    with module Row_id   = Row_id
+     and module Sort_key = Sort_key
+
+  module Make_simple (Row_id : Row_id) : S
+    with module Row_id   = Row_id
+     and module Sort_key = Row_id
 end

@@ -4,22 +4,23 @@ open Util
 
 include Partial_render_list_intf
 
-module Make (Key : Key) = struct
-  module Key = Key
+module Make (Row_id : Row_id) (Sort_key : Sort_key with type row_id := Row_id.t) = struct
+  module Row_id   = Row_id
+  module Sort_key = Sort_key
 
   module Height_cache = struct
-    type t = { cache: float Key.Map.t
+    type t = { cache: float Row_id.Map.t
              ; height_guess: float }
     [@@deriving fields, compare, sexp_of]
 
-    let empty ~height_guess = { cache = Key.Map.empty; height_guess }
+    let empty ~height_guess = { cache = Row_id.Map.empty; height_guess }
 
-    let height t key = Option.value (Map.find t.cache key) ~default:t.height_guess
+    let height t row_id = Option.value (Map.find t.cache row_id) ~default:t.height_guess
   end
 
   module Heights = struct
-    include Splay_tree.Make_with_reduction (Key) (Float) (struct
-        type key = Key.t
+    include Splay_tree.Make_with_reduction (Sort_key) (Float) (struct
+        type key = Sort_key.t
         type data = float (* height *)
         type accum = float
         let identity = 0.
@@ -47,9 +48,9 @@ module Make (Key : Key) = struct
     { heights: Heights.t
     (** Section of keys to put in DOM
         This includes extra rows above and below what is actually visible *)
-    ; render_range: Key.t Interval.t
+    ; render_range: Sort_key.t Interval.t
     (** Full map of [render_range]  *)
-    ; rows_to_render: 'v Key.Map.t
+    ; rows_to_render: 'v Sort_key.Map.t
     ; measurements: Measurements.t option
     (** The height cache is stashed here after trimming so that it can be
         accessed later in measure_heights. This way the app doesn't have to
@@ -57,8 +58,8 @@ module Make (Key : Key) = struct
         stores the height cache in its model, it just doesn't also have to store
         a trimmed version in its derived model.*)
     ; height_cache: Height_cache.t
-    ; min_key: Key.t option
-    ; max_key: Key.t option
+    ; min_key: Sort_key.t option
+    ; max_key: Sort_key.t option
     } [@@deriving fields]
 
   (** How many extra rows will be rendered outside of visible range. Must be even to
@@ -85,7 +86,7 @@ module Make (Key : Key) = struct
   let get_visible_range
         ~(measurements:Measurements.t option Incr.t)
         ~(heights:Heights.t Incr.t)
-        ~(rows:_ Key.Map.t Incr.t)
+        ~(rows:_ Sort_key.Map.t Incr.t)
     =
     let%map measurements = measurements
     and heights = heights
@@ -123,10 +124,32 @@ module Make (Key : Key) = struct
   ;;
 
   let create ~rows ~height_cache ~measurements =
+    let just_keys =
+      Incr.Map.mapi ~data_equal:(fun _ _ -> true)
+        rows ~f:(fun ~key:_ ~data:_ -> ())
+    in
+    let row_ids =
+      Incr.Map.unordered_fold just_keys
+        ~init:Row_id.Map.empty
+        ~add:(fun ~key ~data:() map ->
+          let row_id = Sort_key.row_id key in
+          let count = Option.value (Map.find map row_id) ~default:0 in
+          Map.set map ~key:row_id ~data:(count + 1)
+        )
+        ~remove:(fun ~key ~data:() map ->
+          let row_id = Sort_key.row_id key in
+          match Map.find map row_id with
+          | None       -> assert false
+          | Some 1     -> Map.remove map row_id
+          | Some count ->
+            assert (count > 1);
+            Map.set map ~key:row_id ~data:(count - 1)
+        )
+    in
     (* Removes elements from the cache that are no longer in the set of all data so it
        doesn't grow monotonically even while rows are removed. *)
     let trimmed_height_cache =
-      Incr.Map.merge rows (height_cache >>| Height_cache.cache)
+      Incr.Map.merge row_ids (height_cache >>| Height_cache.cache)
         (* Efficiency optimization, we don't care if the rows change, only the heights *)
         ~data_equal_left:(fun _ _ -> true)
         ~f:(fun ~key:_ v ->
@@ -134,25 +157,24 @@ module Make (Key : Key) = struct
           | `Left _ | `Right _ -> None
           | `Both (_,h) -> Some h)
     in
+    let height_lookup =
+      Incr.Map.Lookup.create trimmed_height_cache
+        ~comparator:Row_id.comparator ~data_equal:Float.equal
+    in
+    let height_guess = height_cache >>| Height_cache.height_guess in
     let row_heights =
-      let%bind height_guess = height_cache >>| Height_cache.height_guess in
-      Incr.Map.merge rows trimmed_height_cache
-        ~data_equal_left:(fun _ _ -> true)
-        ~f:(fun ~key:_ data ->
-          match data with
-          | `Left _ -> Some height_guess
-          | `Both (_, height) -> Some height
-          | `Right _ -> None)
+      let%bind height_guess = height_guess in
+      Incr.Map.mapi' just_keys ~data_equal:Unit.equal ~f:(fun ~key ~data:_ ->
+        match%map Incr.Map.Lookup.find height_lookup (Sort_key.row_id key) with
+        | Some height -> height
+        | None        -> height_guess
+      )
     in
     let heights =
       Incr.Map.unordered_fold row_heights
         ~init:Heights.empty
         ~add:(fun ~key ~data acc -> Heights.set acc ~key ~data)
         ~remove:(fun ~key ~data:_ acc -> Heights.remove acc key)
-    in
-    let just_keys =
-      Incr.Map.mapi ~data_equal:(fun _ _ -> true)
-        rows ~f:(fun ~key:_ ~data:_ -> ())
     in
     let visible_range = get_visible_range ~measurements ~heights ~rows in
     let render_range =
@@ -202,15 +224,19 @@ module Make (Key : Key) = struct
       Option.map (Map.min_elt just_keys) ~f:fst,
       Option.map (Map.max_elt just_keys) ~f:fst
     in
+    let height_cache =
+      let%map height_guess = height_guess
+      and trimmed_height_cache = trimmed_height_cache
+      in
+      { Height_cache. height_guess ; cache = trimmed_height_cache }
+    in
     let%map heights = heights
     and rows_to_render = rows_to_render
     and render_range = render_range
-    and trimmed_height_cache = trimmed_height_cache
     and height_cache = height_cache
     and measurements = measurements
     and min_key, max_key = min_and_max_key
     in
-    let height_cache = { height_cache with cache = trimmed_height_cache } in
     { heights
     ; render_range
     ; rows_to_render
@@ -302,15 +328,17 @@ module Make (Key : Key) = struct
     let cache =
       Map.fold t.rows_to_render
         ~init:t.height_cache.cache
-        ~f:(fun ~key ~data:_ cache -> update_cache cache ~key (measure key))
+        ~f:(fun ~key ~data:_ cache ->
+          update_cache cache ~key:(Sort_key.row_id key) (measure key)
+        )
     in
-    { Height_cache.cache; height_guess = t.height_cache.height_guess }
+    { t.height_cache with cache }
   ;;
 
   type 'm measure_heights_acc =
-    { cache   : float Key.Map.t
+    { cache   : float Row_id.Map.t
     ; prev    : 'm option
-    ; current : (Key.t * 'm option) option
+    ; current : (Row_id.t * 'm option) option
     }
 
   let measure_heights t ~measure_row ~get_row_height =
@@ -327,7 +355,7 @@ module Make (Key : Key) = struct
             let next = measure_row next_key in
             { cache = update_cache cache ~current ~prev ~next
             ; prev = Option.bind current ~f:Tuple2.get2
-            ; current = Some (next_key, next)
+            ; current = Some (Sort_key.row_id next_key, next)
             }
           )
       in
@@ -336,3 +364,11 @@ module Make (Key : Key) = struct
     { t.height_cache with cache }
   ;;
 end
+
+module Make_simple (Row_id : Row_id) =
+  Make
+    (Row_id)
+    (struct
+      include Row_id
+      let row_id = Fn.id
+    end)

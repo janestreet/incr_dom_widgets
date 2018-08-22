@@ -22,7 +22,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     module By_column = struct
       type 'a t =
         { column : 'a
-        ; dir    : Sort_dir.t
+        ; dir : Sort_dir.t
         } [@@deriving fields, compare, sexp]
     end
 
@@ -72,6 +72,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       ; sort_by
       }
   end
+
 
   module Row_node_spec = Row_node_spec
 
@@ -178,7 +179,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     let spacer key = "spacer-" ^ key
   end
 
-  module Row_view = Partial_render_list.Make(Key)
+  module Row_view = Partial_render_list.Make(Row_id)(Key)
 
   module Model = struct
     type t = { id: Table_id.t (** To avoid DOM id collisions. Never changes. *)
@@ -636,7 +637,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
       let new_focus_row =
         let%bind visibility_info = m.visibility_info and focus_row = m.focus_row in
         let%bind focus_key = current_key t ~row_id:focus_row in
-        let focus_height = Row_view.Height_cache.height m.height_cache focus_key in
+        let focus_height =
+          Row_view.Height_cache.height m.height_cache (Key.row_id focus_key)
+        in
         let scroll_height = Js_misc.Rect.float_height visibility_info.view_rect in
         let top_margin_offset = get_top_margin_offset m in
         let mult =

@@ -201,13 +201,9 @@ module Action = struct
     | Update_user of User.t * User_id.t option * Form.State.t sexp_opaque
     | Tick
   [@@deriving sexp_of]
-
-  let should_log _ = true
 end
 
-let update_visibility m = m
-
-let apply_action (action : Action.t) (model : Model.t) (_state : State.t)
+let apply_action (model : Model.t) (action : Action.t) (_state : State.t)
       ~schedule_action:_
   : Model.t =
   match action with
@@ -371,11 +367,17 @@ let view (model : Model.t Incr.t) ~inject : Vdom.Node.t Incr.t =
     ; username_list
     ]
 
-let on_display ~old_model:_ _ _ ~schedule_action:_ = ()
-
-let create () =
+let initial_model () =
   { Model.
     form_state;
     users = loaded_users;
     tick_counter = 0;
   }
+
+let create model ~old_model:_ ~inject =
+  let%map apply_action =
+    let%map m = model in
+    apply_action m
+  and view = view model ~inject
+  and model = model in
+  Component.create ~apply_action model view

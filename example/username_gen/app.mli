@@ -1,3 +1,3 @@
-include Incr_dom.App_intf.S_simple
+include Incr_dom.App_intf.S_component
 
-val create : unit -> Model.t
+val initial_model : unit -> Model.t
