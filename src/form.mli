@@ -88,6 +88,7 @@ module Description : sig
       module Open_on_rhs : sig
         (** Infix alias for [map]. *)
         val (^<) : ('a -> 'b) -> ('a, 's, 'ids) t -> ('b, 's, 'ids) t
+
         (** Infix alias for [contra_map]. *)
         val (<^) : ('g, 'b, 'ids) t -> ('a -> 'b) -> ('g, 'a, 'ids) t
 
