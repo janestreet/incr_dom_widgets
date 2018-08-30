@@ -1,7 +1,7 @@
 (library
  ((name incr_dom_widgets)
   (public_name incr_dom_widgets)
-  (preprocess (pps (js_of_ocaml-ppx ppx_jane ppxlib.runner)))
+  (preprocess (pps (js_of_ocaml-ppx ppx_jane -dont-check-doc-comments-attachment ppxlib.runner)))
   (libraries (
     async_kernel
     async_js
