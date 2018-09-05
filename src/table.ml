@@ -182,17 +182,17 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   module Row_view = Partial_render_list.Make(Row_id)(Key)
 
   module Model = struct
-    type t = { id: Table_id.t (** To avoid DOM id collisions. Never changes. *)
-             (** Settings from client. Never change *)
+    type t = { id: Table_id.t (* To avoid DOM id collisions. Never changes. *)
+             (* Settings from client. Never change *)
              ; float_header: Float_type.t
              ; float_first_col: Float_type.t
              ; scroll_margin: Margin.t
              ; scroll_region : Scroll_region.Id.t
-             (** UI state. Changed by user during app usage *)
+             (* UI state. Changed by user during app usage *)
              ; focus_row: Row_id.t option
              ; focus_col: Column_id.t option
              ; sort_criteria: Base_sort_criteria.t
-             (** Info measured from render. Changes each render. *)
+             (* Info measured from render. Changes each render. *)
              ; height_cache: Row_view.Height_cache.t
              ; visibility_info: Visibility_info.t option
              ; col_group_row_height: int
@@ -1168,7 +1168,7 @@ module Default_sort_spec = struct
 
   let compare_keys dir k1 k2 =
     match (k1 : Sort_key.t), (k2 : Sort_key.t) with
-    (** Always sort nulls last regardless of the sort direction *)
+    (* Always sort nulls last regardless of the sort direction *)
     | Null, _ | _, Null -> Sort_key.compare k1 k2
     | _, _ -> Sort_key.compare k1 k2 * Sort_dir.sign dir
 

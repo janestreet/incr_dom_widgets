@@ -127,16 +127,16 @@ module type S = sig
     type 'a t
 
     val create
+      :  ?group:string
       (** optionally render a row above the headers with their group names (similar to
           catalog). columns with the same group must be adjacent to be grouped together *)
-      :  ?group:string
-      (** used to extract a sortable value for this column from a row. *)
       -> ?sort_by:(Row_id.t -> 'a -> Sort_key.t)
-      (** Added to the style attribuate of the th node *)
+      (** used to extract a sortable value for this column from a row. *)
       -> ?header_style:Css.t
+      (** Added to the style attribuate of the th node *)
+      -> header:Vdom.Node.t
       (** rendered at the top of the column.
           this node is wrapped in a <th> node with other attributes *)
-      -> header:Vdom.Node.t
       -> unit
       -> 'a t
 
@@ -174,25 +174,25 @@ module type S = sig
     type t [@@deriving compare, sexp_of]
 
     val create
-      (** How far scroll_to and focus moving should keep the row from the [scroll_region] edge *)
       :  scroll_margin:Margin.t
-      (** Element to scroll in scroll_to and focus moves *)
+      (** How far scroll_to and focus moving should keep the row from the [scroll_region] edge *)
       -> scroll_region:Scroll_region.Id.t
+      (** Element to scroll in scroll_to and focus moves *)
+      -> float_header:Float_type.t
       (** Whether to float the table header fixed to the top or to a specified position on
           scrolling *)
-      -> float_header:Float_type.t
       -> float_first_col:Float_type.t
-      (** Estimated height of a normal row *)
       -> height_guess:float
+      (** Estimated height of a normal row *)
+      -> ?id:Table_id.t
       (** Id of the table.  This must be a fresh id - one that has not been passed to
           [Model.create] before - or behavior is undefined.  It maybe be useful to provide
           your own id here if you need access to the id before you create its associated
           [Model.t]. *)
-      -> ?id:Table_id.t
+      -> ?initial_sort:Base_sort_criteria.t
       (** The column and sort direction that the table should be (initially) sorted by.
           Sorting can be changed later via clicking on column headers. If [initial_sort]
           is not specified, then the table is sorted by [Row_id]. *)
-      -> ?initial_sort:Base_sort_criteria.t
       -> ?initial_focus_row:Row_id.t
       -> ?initial_focus_col:Column_id.t
       -> unit
