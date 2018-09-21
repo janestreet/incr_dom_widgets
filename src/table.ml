@@ -816,7 +816,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
 
   let update_visibility (m : Model.t Incr.t) extra =
     let%map m = m and extra = extra in
-    fun () ->
+    fun ~schedule_action:_ ->
       let visibility_info = Extra.update_visibility_info m extra in
       let height_cache = Extra.update_height_cache m extra in
       let col_group_row_height = Extra.update_col_group_row_height m extra in
