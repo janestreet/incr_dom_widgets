@@ -778,6 +778,13 @@ module Input = struct
     in
     Node.select ~key:id (Attr.id id :: attr) (List.map sorted_options ~f:snd)
   ;;
+
+  let label id attr =
+    let id = Id.to_string id in
+    let attr = (Attr.for_ id) :: attr in
+    Node.label attr
+  ;;
+
 end
 
 module List = struct

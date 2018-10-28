@@ -263,4 +263,8 @@ module Input : sig
     -> ?compare:('a -> 'a -> int)
     -> ('a -> string)
     -> Node.t
+
+  (** Wrapper for {!Vdom.Node.label} and {!Vdom.Attr.for_} *)
+  val label : 'a Id.t -> Attr.t list -> Node.t list -> Node.t
+
 end
