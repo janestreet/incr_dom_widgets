@@ -132,7 +132,7 @@ module type S = sig
           catalog). columns with the same group must be adjacent to be grouped together *)
       -> ?sort_by:(Row_id.t -> 'a -> Sort_key.t)
       (** used to extract a sortable value for this column from a row. *)
-      -> ?header_style:Css.t
+      -> ?header_style:Css_gen.t
       (** Added to the style attribuate of the th node *)
       -> header:Vdom.Node.t
       (** rendered at the top of the column.

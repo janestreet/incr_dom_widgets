@@ -1,5 +1,5 @@
 
-module Css                             = Css
+module Css_gen                         = Css_gen
 module Grouped_help_text               = Grouped_help_text
 module Help_text                       = Help_text
 module Interactive                     = Interactive

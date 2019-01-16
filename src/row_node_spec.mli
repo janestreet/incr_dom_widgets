@@ -1,30 +1,12 @@
 open! Core_kernel
 open! Import
 
-module Attrs : sig
-  type t =
-    { style : Css.t
-    (* [attrs] should not contain a [style] attribute, or it may be overwritten *)
-    ; other_attrs : Vdom.Attr.t list
-    }
-
-  val create
-    :  ?style : Css.t
-    -> ?attrs : Vdom.Attr.t list
-    -> unit
-    -> t
-
-  val combine : t list -> t
-
-  val to_vdom_attrs : t -> Vdom.Attr.t list
-end
-
 module Cell : sig
   (* Each cell node is wrapped in a <td> node with the given [attrs] and possibly
      some additional attributes *)
   type t =
     (* [attrs] should not include an [id] attribute, it may be overwritten *)
-    { attrs : Attrs.t
+    { attrs : Vdom.Attr.t list
     ; node : Vdom.Node.t
     }
 end
@@ -33,6 +15,6 @@ end
    additional attributes *)
 type t =
   (* [row_attrs] should not contain an [id] attribute, or it will be overwritten *)
-  { row_attrs : Attrs.t
+  { row_attrs : Vdom.Attr.t list
   ; cells : Cell.t list
   }

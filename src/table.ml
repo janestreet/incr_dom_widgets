@@ -60,19 +60,18 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   module Column = struct
     type 'a t =
       { header: Node.t
-      ; header_style : Css.t
+      ; header_style : Css_gen.t
       ; group: string option
       ; sort_by: (Row_id.t -> 'a -> Sort_key.t) option
       } [@@deriving fields]
 
-    let create ?group ?sort_by ?(header_style=Css.empty) ~header () =
+    let create ?group ?sort_by ?(header_style=Css_gen.empty) ~header () =
       { header
       ; header_style
       ; group
       ; sort_by
       }
   end
-
 
   module Row_node_spec = Row_node_spec
 
@@ -773,7 +772,9 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
         | Window -> Js_misc.Rect.map (Js_misc.client_rect ()) ~f:Float.of_int
         | Element el -> Js_misc.client_rect_of_element el
       in
-      { Visibility_info.tbody_rect = Js_misc.client_rect_of_element tbody; view_rect }
+      { Visibility_info.tbody_rect = Js_misc.client_rect_of_element tbody
+      ; view_rect
+      }
 
   end
 
@@ -832,7 +833,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     stage (fun height ->
       [ Node.tr ~key
           [ id_attr
-          ; Attr.style (Css.height (`Px (Float.iround_nearest_exn height)))
+          ; Attr.style (Css_gen.height (`Px (Float.iround_nearest_exn height)))
           ]
           []
       ]
@@ -847,10 +848,10 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
   let sticky_style ?left_sticky_pos ?top_sticky_pos ~z_index:z_ndx () =
     let sticky_style =
       match left_sticky_pos, top_sticky_pos with
-      | None, None -> Css.empty
-      | left, top  -> Css.position ?top ?left `Sticky
+      | None, None -> Css_gen.empty
+      | left, top  -> Css_gen.position ?top ?left `Sticky
     in
-    Css.(z_index z_ndx @> sticky_style)
+    Css_gen.(z_index z_ndx @> sticky_style)
   ;;
 
   let view_header ?override_on_click ~inject ~columns ~top_sticky_pos ~left_sticky_pos m =
@@ -922,7 +923,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
            ; Attr.classes ("column-header" :: sort_direction_classes)
            ]
            @ on_click
-           @ [Attr.style (Css.concat [sticky_style; data.Column.header_style])]
+           @ [Attr.style (Css_gen.concat [sticky_style; data.Column.header_style])]
          in
          Node.th attrs [ data.Column.header; Node.text sort_direction_indicator]))
     in
@@ -1020,15 +1021,14 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
           |> List.mapi ~f:(fun i (cell_html_id, { Row_node_spec.Cell. attrs; node }) ->
             let sticky_style = if i = 0 then sticky_style else non_sticky_style in
             let attrs =
-              attrs.other_attrs
-              @ [ Attr.style (Css.concat [attrs.style; sticky_style])
-                ; Attr.id cell_html_id
-                ]
+              [ Attr.style sticky_style
+              ; Attr.id cell_html_id
+              ] @ attrs
+              |> Attrs.merge_classes_and_styles
             in
             Node.td attrs [ node ]
           )
         in
-        let row_attrs = Row_node_spec.Attrs.to_vdom_attrs row_attrs in
         Node.tr ~key:row_html_id (row_attrs @ [ Attr.id row_html_id ]) cells
       )
 
@@ -1056,7 +1056,7 @@ module Make (Row_id : Id) (Column_id : Id) (Sort_spec : Sort_spec) = struct
     Node.table attrs
       [ Node.thead
           [ Attr.id (Html_id.thead table_id)
-          ; Attr.style (Css.background_color `Inherit)
+          ; Attr.style (Css_gen.background_color `Inherit)
           ]
           header
       ; Node.tbody [Attr.id (Html_id.tbody table_id)]
