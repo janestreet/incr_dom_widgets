@@ -90,12 +90,16 @@ module type S = sig
     -> measurements:Measurements.t option Incr.t
     -> 'v t Incr.t
 
+  val measurements : _ t -> Measurements.t option
+
   val find_by_position : _ t -> position:float -> Sort_key.t option
 
-  (* [find_by_relative_position t key ~offset] returns the key at a distance of
-     approximately [offset] away from [key], preferring closer elements to farther ones.
-     If the offset extends past the end of the list, the end key is returned instead. *)
+  (** [find_by_relative_position t key ~offset] returns the key at a distance of
+      approximately [offset] away from [key], preferring closer elements to farther ones.
+      If the offset extends past the end of the list, the end key is returned instead. *)
   val find_by_relative_position : _ t -> Sort_key.t -> offset:float -> Sort_key.t option
+
+  val focus_offset_to_position : _ t -> Sort_key.t -> offset:float -> float
 
   (** Meant for rendering, apps should normally use Incr.Map.mapi' on this *)
   val rows_to_render : 'v t -> 'v Sort_key.Map.t

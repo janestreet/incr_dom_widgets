@@ -68,20 +68,25 @@ module Make (Row_id : Row_id) (Sort_key : Sort_key with type row_id := Row_id.t)
 
   let find_by_position t ~position = Heights.find_by_position t.heights position
 
-  let find_by_relative_position t key ~offset =
+  let focus_offset_to_position t key ~offset =
     let key_position, key_height = Heights.get_position_and_height t.heights key in
     let key_height = Option.value key_height ~default:0. in
-    let find_by_position position ~default =
+    match Ordering.of_int (Float.compare offset 0.) with
+    | Equal   -> key_position
+    | Less    -> key_position +. offset +. key_height
+    | Greater -> key_position +. offset
+
+  let find_by_relative_position t key ~offset =
+    let find ~default =
+      let position = focus_offset_to_position t key ~offset in
       match find_by_position t ~position with
       | Some key -> Some key
       | None     -> default
     in
     match Ordering.of_int (Float.compare offset 0.) with
     | Equal   -> Some key
-    | Less    ->
-      find_by_position (offset +. key_position +. key_height) ~default:t.min_key
-    | Greater ->
-      find_by_position (offset +. key_position)               ~default:t.max_key
+    | Less    -> find ~default:t.min_key
+    | Greater -> find ~default:t.max_key
 
   let get_visible_range
         ~(measurements:Measurements.t option Incr.t)
