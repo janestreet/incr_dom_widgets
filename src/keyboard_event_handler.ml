@@ -28,10 +28,18 @@ module Condition = struct
       | Textarea t -> on_textarea t
       | _          -> false
 
+  let has_input_target ev =
+    input_cond ev ~on_input:(fun _ -> true) ~on_textarea:(fun _ -> true)
+
   let has_text_input_target ev =
     input_cond ev
       ~on_input:    (fun i -> String.equal (Js.to_string i##._type) "text")
       ~on_textarea: (fun _ -> true)
+
+  let has_number_input_target ev =
+    input_cond ev
+      ~on_input:    (fun i -> String.equal (Js.to_string i##._type) "number")
+      ~on_textarea: (fun _ -> false)
 
   let has_form_element_target ev =
     let f i = Option.is_some (Js.Opt.to_option (i##.form)) in

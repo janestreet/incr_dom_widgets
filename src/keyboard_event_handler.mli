@@ -23,9 +23,15 @@ module Condition : sig
   val and_ : t -> t -> t
   val or_  : t -> t -> t
 
+  (** [has_input_target] returns true if the event target is an input *)
+  val has_input_target : t
+
   (** [has_text_input_target] returns true if the event target is a text input or textarea
       element *)
   val has_text_input_target : t
+
+  (** [has_number_input_target] returns true if the event target is a number input *)
+  val has_number_input_target : t
 
   (** [has_form_element_target] returns true if the event target is part of a form *)
   val has_form_element_target : t
