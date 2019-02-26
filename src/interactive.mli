@@ -100,6 +100,7 @@ open Vdom
 type 'a t
 
 (* Let syntax is defined at the end of this file. *)
+
 include Monad.S_without_syntax with type 'a t := 'a t
 
 module Primitives : sig
@@ -108,19 +109,10 @@ module Primitives : sig
       create two nodes with the same id), but it might be useful
       if you want to refer to the node elsewhere.
   *)
-  type 'a primitive =
-    ?attrs:Attr.t list
-    -> ?id:string
-    -> unit
-    -> 'a t
+  type 'a primitive = ?attrs:Attr.t list -> ?id:string -> unit -> 'a t
 
-  val text
-    :  ?init:string
-    -> string primitive
-
-  val text_area
-    :  ?init:string
-    -> string primitive
+  val text : ?init:string -> string primitive
+  val text_area : ?init:string -> string primitive
 
   module Button_state : sig
     type t =
@@ -128,13 +120,8 @@ module Primitives : sig
       | Not_pressed
   end
 
-  val button
-    :  text:string
-    -> Button_state.t primitive
-
-  val disabled_button
-    :  text:string
-    -> unit primitive
+  val button : text:string -> Button_state.t primitive
+  val disabled_button : text:string -> unit primitive
 
   (** [options] is a list of tuples (label, value). [label] is what will be
       displayed to the user in the dropdown. [value] is what will be produced
@@ -145,10 +132,7 @@ module Primitives : sig
 
       Raises when [options] is empty or [init >= List.length options].
   *)
-  val dropdown_exn
-    :  options:(string * 'a) list
-    -> ?init:int
-    -> 'a primitive
+  val dropdown_exn : options:(string * 'a) list -> ?init:int -> 'a primitive
 
   (** [dropdown_with_blank_exn] is a wrapper around [dropdown_exn] which adds a blank
       option to the dropdown that produces [None]. It is otherwise the same as
@@ -164,18 +148,9 @@ module Primitives : sig
     -> ?init:int
     -> 'a option primitive
 
-  val checkbox
-    :  ?init:bool
-    -> bool primitive
-
-  val nodes
-    :  Node.t list
-    -> unit t
-
-  val message
-    :  string
-    -> unit t
-
+  val checkbox : ?init:bool -> bool primitive
+  val nodes : Node.t list -> unit t
+  val message : string -> unit t
   val line_break : unit t
 
   (** [create] allows you to create your own primitives.
@@ -206,19 +181,18 @@ module Primitives : sig
       For an example, check the implementation of [Primitives.text].
   *)
   val create
-    :  init   : 'a
-    -> render : (inject : ('a -> Event.t) -> value : 'a Incr.t -> Node.t list Incr.t)
+    :  init:'a
+    -> render:(inject:('a -> Event.t) -> value:'a Incr.t -> Node.t list Incr.t)
     -> 'a t
 
-  val default_text_attrs      : Attr.t list
+  val default_text_attrs : Attr.t list
   val default_text_area_attrs : Attr.t list
-  val default_button_attrs    : Attr.t list
-  val default_dropdown_attrs  : Attr.t list
-
-  val bootstrap_text_attrs      : Attr.t list
+  val default_button_attrs : Attr.t list
+  val default_dropdown_attrs : Attr.t list
+  val bootstrap_text_attrs : Attr.t list
   val bootstrap_text_area_attrs : Attr.t list
-  val bootstrap_button_attrs    : Attr.t list
-  val bootstrap_dropdown_attrs  : Attr.t list
+  val bootstrap_button_attrs : Attr.t list
+  val bootstrap_dropdown_attrs : Attr.t list
 end
 
 (** You have to schedule an action whenever the state changes in order for the view to
@@ -229,8 +203,8 @@ end
 *)
 val render
   :  'a t
-  -> on_input : ('a -> 'action)
-  -> inject   : ('action -> Event.t)
+  -> on_input:('a -> 'action)
+  -> inject:('action -> Event.t)
   -> Node.t Incr.t
 
 (** [map_nodes] can be used to change the presentation of the [Interactive.t].
@@ -241,10 +215,7 @@ val render
         Node.div [Attr.style ["background", "red"]] nodes)
     ]}
 *)
-val map_nodes
-  :  'a t
-  -> f:(Node.t list -> Node.t list)
-  -> 'a t
+val map_nodes : 'a t -> f:(Node.t list -> Node.t list) -> 'a t
 
 (** [map_nodes_value_dependent] is like [map_nodes], but the function can also depend on
     the current value of the [Interactive.t].
@@ -252,36 +223,28 @@ val map_nodes
     For example, in a ['a Or_error.t Interactive.t], you could use this to add a node
     which displays the error.
 *)
-val map_nodes_value_dependent
-  :  'a t
-  -> f:('a -> Node.t list -> Node.t list)
-  -> 'a t
+val map_nodes_value_dependent : 'a t -> f:('a -> Node.t list -> Node.t list) -> 'a t
 
-val wrap_in_div
-  :  ?attrs: Attr.t list
-  -> 'a t
-  -> 'a t
-
-val of_incr
-  :  'a Incr.t
-  -> 'a t
+val wrap_in_div : ?attrs:Attr.t list -> 'a t -> 'a t
+val of_incr : 'a Incr.t -> 'a t
 
 (** [current_value] calls [Incr.stabilize].
 
     See also [render], which is the typical way of handling changes to the value.
 *)
-val current_value
-  :  'a t
-  -> 'a
+val current_value : 'a t -> 'a
 
 module Let_syntax : sig
   val return : 'a -> 'a t
+
   include Monad.Infix with type 'a t := 'a t
+
   module Let_syntax : sig
     val return : 'a -> 'a t
     val bind : 'a t -> f:('a -> 'b t) -> 'b t
     val map : 'a t -> f:('a -> 'b) -> 'b t
     val both : 'a t -> 'b t -> ('a * 'b) t
+
     module Open_on_rhs = Primitives
   end
 end

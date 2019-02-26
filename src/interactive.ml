@@ -35,8 +35,8 @@ let () =
 *)
 
 type 'a t =
-  { value      : 'a Incr.t
-  ; render     : (unit -> Event.t) -> Node.t list Incr.t
+  { value : 'a Incr.t
+  ; render : (unit -> Event.t) -> Node.t list Incr.t
   }
 [@@deriving fields]
 
@@ -57,30 +57,22 @@ let of_incr value =
   Fields.create ~value ~render
 ;;
 
-let return x =
-  of_incr (Incr.return x)
-;;
+let return x = of_incr (Incr.return x)
 
-let bind
-      (type a)
-      (type b)
-      (x : a t)
-      ~(f : a -> b t)
-  : b t =
+let bind (type a b) (x : a t) ~(f : a -> b t) : b t =
   let open Incr.Let_syntax in
-  let bti: b t Incr.t =
+  let bti : b t Incr.t =
     let%map value = x.value in
     f value
   in
-  let value: b Incr.t =
+  let value : b Incr.t =
     let%bind bt = bti in
     bt.value
   in
   let render inject =
     let nodes x = x.render inject in
     let%map outer_nodes = nodes x
-    and inner_nodes = bti >>= nodes
-    in
+    and inner_nodes = bti >>= nodes in
     outer_nodes @ inner_nodes
   in
   Fields.create ~value ~render
@@ -120,8 +112,7 @@ let map_nodes_value_dependent t ~f =
   let open Incr.Let_syntax in
   let render inject =
     let%map nodes = t.render inject
-    and value = t.value
-    in
+    and value = t.value in
     f value nodes
   in
   Fields.create ~value:t.value ~render
@@ -129,18 +120,13 @@ let map_nodes_value_dependent t ~f =
 
 let both a b =
   let value = Incr.map2 a.value b.value ~f:(fun a b -> a, b) in
-  let render inject =
-    Incr.map2 (a.render inject) (b.render inject) ~f:List.append
-  in
+  let render inject = Incr.map2 (a.render inject) (b.render inject) ~f:List.append in
   Fields.create ~value ~render
 ;;
 
-let wrap_in_div ?(attrs = []) t =
-  map_nodes t ~f:(fun nodes -> [ Node.div attrs nodes ])
-;;
+let wrap_in_div ?(attrs = []) t = map_nodes t ~f:(fun nodes -> [ Node.div attrs nodes ])
 
 module Primitives = struct
-
   let create ~init ~render =
     let var = Incr.Var.create init in
     let value = Incr.Var.watch var in
@@ -154,16 +140,15 @@ module Primitives = struct
     Fields.create ~value ~render
   ;;
 
-  type 'a primitive =
-    ?attrs:Attr.t list
-    -> ?id:string
-    -> unit
-    -> 'a t
+  type 'a primitive = ?attrs:Attr.t list -> ?id:string -> unit -> 'a t
 
-  let bootstrap_text_attrs = [ ]
+  let bootstrap_text_attrs = []
   let bootstrap_text_area_attrs = [ Attr.class_ "textarea" ]
-  let bootstrap_button_attrs = [ Attr.classes ["btn"; "btn-primary"] ]
-  let bootstrap_dropdown_attrs = [ Attr.classes ["btn";"btn-outline-primary";"btn-sm";"dropdown-toggle" ]]
+  let bootstrap_button_attrs = [ Attr.classes [ "btn"; "btn-primary" ] ]
+
+  let bootstrap_dropdown_attrs =
+    [ Attr.classes [ "btn"; "btn-outline-primary"; "btn-sm"; "dropdown-toggle" ] ]
+  ;;
 
   let default_text_attrs = []
   let default_text_area_attrs = []
@@ -190,17 +175,17 @@ module Primitives = struct
     create ~init ~render:(fun ~inject ~value ->
       let%map value = value in
       let on_input = Attr.on_input (fun _ev text -> inject text) in
-      let attrs = (Attr.id id) :: on_input :: attrs in
-      [
-        match which_one with
-        | `Text -> Node.input ~key (Attr.type_ "text" :: Attr.value value :: attrs) []
-        | `Text_area -> Node.textarea ~key attrs [ Node.text value ]
+      let attrs = Attr.id id :: on_input :: attrs in
+      [ (match which_one with
+          | `Text -> Node.input ~key (Attr.type_ "text" :: Attr.value value :: attrs) []
+          | `Text_area -> Node.textarea ~key attrs [ Node.text value ])
       ])
   ;;
 
   let text ?init ?(attrs = default_text_attrs) =
     text_or_text_area ~which_one:`Text ?init ~attrs
   ;;
+
   let text_area ?init ?(attrs = default_text_area_attrs) =
     text_or_text_area ~which_one:`Text_area ?init ~attrs
   ;;
@@ -217,25 +202,16 @@ module Primitives = struct
     create ~init ~render:(fun ~inject ~value:(_ : Button_state.t Incr.t) ->
       let on_click =
         Attr.on_click (fun _ ->
-          Event.Many
-            [ inject Button_state.Pressed
-            ; inject Button_state.Not_pressed
-            ])
+          Event.Many [ inject Button_state.Pressed; inject Button_state.Not_pressed ])
       in
-      let attrs = (Attr.id id) :: (Attr.type_ "button") :: on_click :: attrs in
+      let attrs = Attr.id id :: Attr.type_ "button" :: on_click :: attrs in
       Incr.return [ Node.button ~key attrs [ Node.text text ] ])
   ;;
 
   let disabled_button ~text ?(attrs = default_button_attrs) ?id () =
     let key = next_key () in
     let id = Option.value id ~default:key in
-    let attrs =
-      [ Attr.id id
-      ; Attr.type_ "button"
-      ; Attr.disabled
-      ]
-      @ attrs
-    in
+    let attrs = [ Attr.id id; Attr.type_ "button"; Attr.disabled ] @ attrs in
     let nodes = [ Node.button ~key attrs [ Node.text text ] ] in
     of_nodes nodes
   ;;
@@ -251,22 +227,21 @@ module Primitives = struct
           List.mapi names ~f:(fun idx text ->
             let selected_attr =
               if selected_idx = idx
-              then [Attr.create "selected" "selected"]
+              then [ Attr.create "selected" "selected" ]
               else []
             in
-            let option_attr = selected_attr @ [Attr.value (Int.to_string idx)] in
-            Node.option option_attr [Node.text text]
-          )
+            let option_attr = selected_attr @ [ Attr.value (Int.to_string idx) ] in
+            Node.option option_attr [ Node.text text ])
         in
         let on_input = Attr.on_input (fun _ev text -> inject (Int.of_string text)) in
-        let attrs = (Attr.id id) :: on_input :: attrs in
+        let attrs = Attr.id id :: on_input :: attrs in
         [ Node.select ~key attrs select_options ])
     in
     map t ~f:(fun selected_index -> List.nth_exn meanings selected_index)
   ;;
 
   let dropdown_with_blank_exn ~options ?init ?attrs ?id () =
-    let options = List.map options ~f:(fun (label, value) -> (label, Some value)) in
+    let options = List.map options ~f:(fun (label, value) -> label, Some value) in
     let options = ("", None) :: options in
     let init = Option.map init ~f:(fun x -> x + 1) in
     dropdown_exn ~options ?init ?attrs ?id ()
@@ -277,12 +252,7 @@ module Primitives = struct
     let key, id = shared_setup ~id in
     create ~init ~render:(fun ~inject ~value ->
       let%map value = value in
-      let attrs =
-        (if value
-         then [Attr.checked]
-         else [])
-        @ attrs
-      in
+      let attrs = (if value then [ Attr.checked ] else []) @ attrs in
       (* jjackson: I couldn't figure out how to obtain the current state of the checkbox
          directly from the event, so we have to find the checkbox in the DOM and look at
          its state, which we avoid in the other primitives as it creates more room for
@@ -295,37 +265,32 @@ module Primitives = struct
           | Some (Dom_html.Input el) -> Js.to_bool el##.checked
           | _ ->
             let () =
-              Async_js.log_s [%message "Couldn't determine the state of the checkbox. \
-                                        The form might not work properly." (id : string)]
+              Async_js.log_s
+                [%message
+                  "Couldn't determine the state of the checkbox. The form might not \
+                   work properly."
+                    (id : string)]
             in
             value
         in
         inject checked
       in
       let attrs =
-        (Attr.type_ "checkbox")
-        :: (Attr.id id)
-        :: (Attr.on_click on_click)
-        :: attrs
+        Attr.type_ "checkbox" :: Attr.id id :: Attr.on_click on_click :: attrs
       in
       [ Node.input ~key attrs [] ])
   ;;
 
-  let message msg =
-    of_nodes [ Node.text msg ]
-  ;;
-
+  let message msg = of_nodes [ Node.text msg ]
   let line_break = of_nodes [ Node.div [] [] ]
-  ;;
   let nodes = of_nodes
-  ;;
 end
 
 module T = struct
   include Monad.Make (struct
       type nonrec 'a t = 'a t
-      let return = return
 
+      let return = return
       let map = map
       let map = `Custom map
       let bind = bind
@@ -337,19 +302,22 @@ let all = T.all
 let all_unit = T.all_unit
 let ignore_m = T.ignore_m
 let join = T.join
-let (>>|) = T.(>>|)
-let (>>=) = T.(>>=)
+let ( >>| ) = T.( >>| )
+let ( >>= ) = T.( >>= )
+
 module Monad_infix = T.Monad_infix
 
 module Let_syntax = struct
   let return = return
-  let (>>|) = (>>|)
-  let (>>=) = (>>=)
+  let ( >>| ) = ( >>| )
+  let ( >>= ) = ( >>= )
+
   module Let_syntax = struct
     let return = return
     let bind = bind
     let map = map
     let both = both
+
     module Open_on_rhs = Primitives
   end
 end
