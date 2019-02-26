@@ -48,10 +48,7 @@ module Init : sig
   val no_diff : original:Sexp.t -> updated:Sexp.t -> Incr_dom.Vdom.Node.t
 end
 
-val to_interactive
-  :  init:'a Init.t
-  -> 'a t
-  -> 'a Or_error.t Interactive.t
+val to_interactive : init:'a Init.t -> 'a t -> 'a Or_error.t Interactive.t
 
 (** A ['a Case.t] is implemented as a ['a Sexp_form.t].
     When you create a case from a variant constructor for variant [Foo.t],
@@ -85,19 +82,14 @@ module Record_field : sig
 end
 
 module Primitives : sig
-  val string          : ?placeholder:string -> ?width:int -> unit -> string t
+  val string : ?placeholder:string -> ?width:int -> unit -> string t
   val nonempty_string : ?placeholder:string -> ?width:int -> unit -> string t
-
-  val int              : int t
-  val positive_int     : int t
+  val int : int t
+  val positive_int : int t
   val non_negative_int : int t
-
-  val option
-    :  'a t
-    -> 'a option t
-
+  val option : 'a t -> 'a option t
   val bool_true_false : bool t
-  val bool_yes_no     : bool t
+  val bool_yes_no : bool t
 
   (** [element_name] is used for buttons. If you provide ~element_name:"foo", then the
       button will say "Add foo" instead of "Add".
@@ -118,7 +110,7 @@ module Primitives : sig
     -> ?max_size:int
     -> ?add_and_remove_button_attrs:Incr_dom.Vdom.Attr.t list
     -> ?editor_message_attr:Incr_dom.Vdom.Attr.t
-    -> order:[ `Ordered | `Unordered ]
+    -> order:[`Ordered | `Unordered]
     -> 'a t
     -> 'a list t
 
@@ -181,15 +173,10 @@ module Primitives : sig
           |> finish_record
       ]}
   *)
-  val record
-    :  create:('a -> 'b)
-    -> ('record, 'a -> 'b) Record_builder.t
+  val record : create:('a -> 'b) -> ('record, 'a -> 'b) Record_builder.t
 
   (** See documentation for [record]. *)
-  val field
-    :  'a t
-    -> ('record, 'a) Field.t
-    -> ('record, 'a) Record_field.t
+  val field : 'a t -> ('record, 'a) Field.t -> ('record, 'a) Record_field.t
 
   (** See documentation for [record]. *)
   val sexp_option_field
@@ -198,15 +185,13 @@ module Primitives : sig
     -> ('record, 'a sexp_option) Record_field.t
 
   (** See documentation for [record]. *)
-  val (<.*>)
+  val ( <.*> )
     :  ('record, 'a -> 'b) Record_builder.t
     -> ('record, 'a) Record_field.t
     -> ('record, 'b) Record_builder.t
 
   (** See documentation for [record]. *)
-  val finish_record
-    :  ('record, 'record) Record_builder.t
-    -> 'record t
+  val finish_record : ('record, 'record) Record_builder.t -> 'record t
 
   (** This has some special behaviour, namely that if the input string contains
       no parentheses or quotes then we will treat it as an atom -- so the user can enter
@@ -253,10 +238,7 @@ module Primitives : sig
       "Please select an option: Foo | Bar". If there are a lot of variants
       and you don't want this, you can use [don't_state_options_in_error].
   *)
-  val variant
-    :  ?don't_state_options_in_error:unit
-    -> 'a Case.t list
-    -> 'a t
+  val variant : ?don't_state_options_in_error:unit -> 'a Case.t list -> 'a t
 
   (** Mainly useful for polymorphic variants. For example, the following produces a
       [ `Foo of int ] Case.t:
@@ -265,21 +247,13 @@ module Primitives : sig
         case_raw ~name:"Foo" ~constructor:(fun x -> `Foo x) <|*> positive_int
       ]}
   *)
-  val case_raw
-    :  name:string
-    -> constructor:'a
-    -> 'a Case.t
+  val case_raw : name:string -> constructor:'a -> 'a Case.t
 
   (** See documentation for [variant]. *)
-  val case
-    :  'a Variantslib.Variant.t
-    -> 'a Case.t
+  val case : 'a Variantslib.Variant.t -> 'a Case.t
 
   (** See documentation for [variant]. *)
-  val (<|*>)
-    :  ('a -> 'b) Case.t
-    -> 'a t
-    -> 'b Case.t
+  val ( <|*> ) : ('a -> 'b) Case.t -> 'a t -> 'b Case.t
 
   (** Allows the user to choose from a list of ['a]s, which are displayed using
       the provided names in the dropdown, or enter their own choice by selecting
@@ -316,8 +290,9 @@ module Primitives : sig
   val enumeration
     :  ?don't_state_options_in_error:unit
     -> 'a list
-    -> to_string:('a -> string) (* You can use [ppx_variants] for this. *)
-    -> 'a t
+    -> to_string:('a -> string)
+    -> (* You can use [ppx_variants] for this. *)
+    'a t
 
   (** For recursive data types.
       Note: [recursive Fn.id] will go into an infinite loop when you call [to_interactive]
@@ -341,23 +316,18 @@ module Primitives : sig
                  ~cons:(fun acc const -> (case cons <|*> int <|*> my_list_editor) :: acc)))
       ]}
   *)
-  val recursive
-    :  ('a t -> 'a t)
-    -> 'a t
+  val recursive : ('a t -> 'a t) -> 'a t
 
   (** This is useful for e.g. specifying default values when the user creates a new
       element in a list. If you want a default value for the whole form, consider using
       [Init.with_default], which also shows the user a diff summarizing their
       edits.
   *)
-  val defaulting_to
-    :  default:'a
-    -> sexp_of_t:('a -> Sexp.t)
-    -> 'a t
-    -> 'a t
+  val defaulting_to : default:'a -> sexp_of_t:('a -> Sexp.t) -> 'a t -> 'a t
 
   (** These only affect formatting, not functionality. *)
   val on_new_line : 'a t -> 'a t
+
   val case_on_new_line : 'a Case.t -> 'a Case.t
 
   (** Hides the form by default, giving the user a checkbox to un-collapse the form if
@@ -365,12 +335,10 @@ module Primitives : sig
   val collapse : ?editor_message_attr:Incr_dom.Vdom.Attr.t -> 'a t -> 'a t
 
   val unit : unit t
-
   val tuple2 : 'a t -> 'b t -> ('a * 'b) t
   val tuple3 : 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
   val tuple4 : 'a t -> 'b t -> 'c t -> 'd t -> ('a * 'b * 'c * 'd) t
   val tuple5 : 'a t -> 'b t -> 'c t -> 'd t -> 'e t -> ('a * 'b * 'c * 'd * 'e) t
-
 end
 
 (** To map from ['a t] to ['b t], we need to be able to parse default values of type ['b].
@@ -410,10 +378,12 @@ module Unsafe : sig
 
   module Let_syntax : sig
     include Applicative.S with type 'a t := 'a t
+
     module Let_syntax : sig
       val return : 'a -> 'a t
       val map : 'a t -> f:('a -> 'b) -> 'b t
       val both : 'a t -> 'b t -> ('a * 'b) t
+
       module Open_on_rhs = Primitives
     end
   end
@@ -425,11 +395,7 @@ end
     It's recommended to use `After for errors which are right next to the area where
     the user inputs the data, and `Before for errors in complicated types which
     comprise many input fields. *)
-val validate
-  :  where:[ `Before | `After ]
-  -> 'a t
-  -> f:('a -> unit Or_error.t)
-  -> 'a t
+val validate : where:[`Before | `After] -> 'a t -> f:('a -> unit Or_error.t) -> 'a t
 
 (** Same as [validate], but more suited for validating properties which depend on
     external, changing state.
@@ -437,7 +403,7 @@ val validate
     Note that an [Incr] can be converted to an [Interactive] using [Interactive.of_incr].
 *)
 val validate_interactive
-  :  where:[ `Before | `After ]
+  :  where:[`Before | `After]
   -> 'a t
   -> 'b Interactive.t
   -> f:('a -> 'b -> unit Or_error.t)
@@ -448,10 +414,7 @@ val validate_interactive
 
     [validate] is a wrapper around [handle_error].
 *)
-val handle_error
-  :  where:[ `Before | `After ]
-  -> 'a Or_error.t t
-  -> 'a t
+val handle_error : where:[`Before | `After] -> 'a Or_error.t t -> 'a t
 
 (** Verifies that the provided [form] can parse [value].
     Intended for expect tests. *)
@@ -460,7 +423,7 @@ val test
   -> value:'a
   -> sexp_of_t:('a -> Sexp.t)
   -> equal:('a -> 'a -> bool)
-  -> on_failure:[ `Print | `Raise ]
+  -> on_failure:[`Print | `Raise]
   -> unit
 
 (** For convenience -- it just calls [test] for each value. *)
@@ -469,7 +432,7 @@ val test_list
   -> values:'a list
   -> sexp_of_t:('a -> Sexp.t)
   -> equal:('a -> 'a -> bool)
-  -> on_failure:[ `Print | `Raise ]
+  -> on_failure:[`Print | `Raise]
   -> unit
 
 (** For convenience -- it just calls [test] for each value. *)
@@ -478,5 +441,5 @@ val test_sequence
   -> values:'a Sequence.t
   -> sexp_of_t:('a -> Sexp.t)
   -> equal:('a -> 'a -> bool)
-  -> on_failure:[ `Print | `Raise ]
+  -> on_failure:[`Print | `Raise]
   -> unit

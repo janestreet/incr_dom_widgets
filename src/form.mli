@@ -1,5 +1,5 @@
-open Core_kernel
 (** Module for creating and manipulating web forms. *)
+open Core_kernel
 
 (** {1 Typed Id} *)
 
@@ -38,7 +38,6 @@ end
     (like bool or string fields) and combining them into more complex
     structures which can be themselves combined with other structures. *)
 module Description : sig
-
   (** Describes how to edit a type as a series of form elements.
 
       The two type parameters ['s] and ['g] represent respectively
@@ -52,17 +51,15 @@ module Description : sig
   type ('g, 's, 'ids) t
 
   val not_editable : default:'a -> ('a, 'a, unit) t
-
   val bool : (bool, bool, bool Id.t) t
   val string : (string, string, string Id.t) t
-
   val sexp : of_sexp:(Sexp.t -> 'a) -> sexp_of:('a -> Sexp.t) -> ('a, 'a, string Id.t) t
 
   (** Raises an exception if the provided list is empty or contains duplicate values. *)
   val variant : 'a list -> equal:('a -> 'a -> bool) -> ('a, 'a, 'a Variant_id.t) t
 
   (** Combine two [t]'s. *)
-  val both : ('a, 's, 'a_ids) t -> ('b, 's, 'b_ids) t -> ('a * 'b , 's, 'a_ids * 'b_ids) t
+  val both : ('a, 's, 'a_ids) t -> ('b, 's, 'b_ids) t -> ('a * 'b, 's, 'a_ids * 'b_ids) t
 
   val map : ('a, 's, 'ids) t -> f:('a -> 'b) -> ('b, 's, 'ids) t
   val contra_map : ('g, 'b, 'ids) t -> f:('a -> 'b) -> ('g, 'a, 'ids) t
@@ -78,25 +75,23 @@ module Description : sig
     -> f:('a -> 'ids -> ('b, Form_error.t list) Result.t)
     -> ('b, 's, 'ids) t
 
-  val list :
-    ('g, 's, 'ids) t -> ('g list, 's list, 'ids list * 's List_id.t) t
+  val list : ('g, 's, 'ids) t -> ('g list, 's list, 'ids list * 's List_id.t) t
 
   module Let_syntax : sig
     module Let_syntax : sig
       val map : ('a, 's, 'ids) t -> f:('a -> 'b) -> ('b, 's, 'ids) t
-      val both : ('a, 's, 'a_id) t -> ('b, 's, 'b_id) t -> ('a * 'b , 's, 'a_id * 'b_id) t
+      val both : ('a, 's, 'a_id) t -> ('b, 's, 'b_id) t -> ('a * 'b, 's, 'a_id * 'b_id) t
 
       module Open_on_rhs : sig
         (** Infix alias for [map]. *)
-        val (^<) : ('a -> 'b) -> ('a, 's, 'ids) t -> ('b, 's, 'ids) t
+        val ( ^< ) : ('a -> 'b) -> ('a, 's, 'ids) t -> ('b, 's, 'ids) t
 
         (** Infix alias for [contra_map]. *)
-        val (<^) : ('g, 'b, 'ids) t -> ('a -> 'b) -> ('g, 'a, 'ids) t
+        val ( <^ ) : ('g, 'b, 'ids) t -> ('a -> 'b) -> ('g, 'a, 'ids) t
 
         val bool : (bool, bool, bool Id.t) t
         val string : (string, string, string Id.t) t
-        val list :
-          ('g, 's, 'ids) t -> ('g list, 's list, 'ids list * 's List_id.t) t
+        val list : ('g, 's, 'ids) t -> ('g list, 's list, 'ids list * 's List_id.t) t
         val variant : 'a list -> equal:('a -> 'a -> bool) -> ('a, 'a, 'a Variant_id.t) t
       end
     end
@@ -139,29 +134,38 @@ module Description : sig
 
       type ('field, 'head, 'head_ids, 'tail, 'tail_ids, 'all_fields, 'all_ids, 'record) fold_step =
         ('head, 'head_ids, 'all_fields, 'all_ids, 'record) accum
-        -> ('all_fields -> 'field) * ('tail, 'tail_ids, 'all_fields, 'all_ids, 'record) accum
+        -> ('all_fields -> 'field)
+           * ('tail, 'tail_ids, 'all_fields, 'all_ids, 'record) accum
 
       type ('field, 'field_ids, 'tail, 'tail_ids, 'all_fields, 'all_ids, 'record) handle_one_field =
         ( 'field
-        , ('field, 'tail) Record_builder.Hlist.cons, ('field_ids, 'tail_ids) Record_builder.Hlist.cons
-        , 'tail, 'tail_ids
-        , 'all_fields Record_builder.Hlist.nonempty, 'all_ids Record_builder.Hlist.nonempty
-        , 'record
-        ) fold_step
+        , ('field, 'tail) Record_builder.Hlist.cons
+        , ('field_ids, 'tail_ids) Record_builder.Hlist.cons
+        , 'tail
+        , 'tail_ids
+        , 'all_fields Record_builder.Hlist.nonempty
+        , 'all_ids Record_builder.Hlist.nonempty
+        , 'record )
+          fold_step
 
       type ('all_fields, 'all_ids, 'record) handle_all_fields =
         ( 'record
-        , 'all_fields Record_builder.Hlist.nonempty, 'all_ids Record_builder.Hlist.nonempty
-        , Record_builder.Hlist.nil, Record_builder.Hlist.nil
-        , 'all_fields Record_builder.Hlist.nonempty, 'all_ids Record_builder.Hlist.nonempty
-        , 'record) fold_step
+        , 'all_fields Record_builder.Hlist.nonempty
+        , 'all_ids Record_builder.Hlist.nonempty
+        , Record_builder.Hlist.nil
+        , Record_builder.Hlist.nil
+        , 'all_fields Record_builder.Hlist.nonempty
+        , 'all_ids Record_builder.Hlist.nonempty
+        , 'record )
+          fold_step
     end
 
     (** Handle one field of a record using the supplied editor.
 
         This should be used as an argument to [Fields.make_creator], see the example.
     *)
-    val field : ('field, 'field, 'field_ids) t
+    val field
+      :  ('field, 'field, 'field_ids) t
       -> ('record, 'field) Field.t
       -> ('field, 'field_ids, _, _, _, _, 'record) Make_creator_types.handle_one_field
 
@@ -170,7 +174,7 @@ module Description : sig
         This is used with an application of [Fields.make_creator] as shown in the example.
     *)
     val build_for_record
-      : (_, 'ids, 'record) Make_creator_types.handle_all_fields
+      :  (_, 'ids, 'record) Make_creator_types.handle_all_fields
       -> ('record, 'record, 'ids) t
   end
 end
@@ -210,17 +214,16 @@ module State : sig
 
   (** Return all errors associated with the form state *)
   val errors : t -> Error.t list
-
 end
 
 (** {1 List module} *)
 
 (** Provides operations related to lists of forms. *)
 module List : sig
-
-  type 'a list_modifier = {
-    transform : 'elt. 'elt list -> create_new_form:(?init:'a -> unit -> 'elt) -> 'elt list
-  }
+  type 'a list_modifier =
+    { transform :
+        'elt. 'elt list -> create_new_form:(?init:'a -> unit -> 'elt) -> 'elt list
+    }
 
   (** Modify list with a supplied [list_modifier] function.
 
@@ -229,7 +232,7 @@ module List : sig
   val modify_list : State.t -> 'a List_id.t -> f:'a list_modifier -> State.t
 
   (** Add one empty form in front of the list *)
-  val cons   : State.t -> ?init:'a -> 'a List_id.t -> State.t
+  val cons : State.t -> ?init:'a -> 'a List_id.t -> State.t
 
   (** Add one empty form to the end of the list. *)
   val append : State.t -> ?init:'a -> 'a List_id.t -> State.t
@@ -238,32 +241,26 @@ module List : sig
       If [int] is invalid index (i.e. [int] < 0 or [int] >= length of the
       list), the list remains unchanged and no exceptions are raised. *)
   val remove_nth : State.t -> 'a List_id.t -> int -> State.t
-
 end
 
 (** {1 Input module} *)
 
 (** Wrappers to create VDom input fields using field ids. *)
 module Input : sig
-
   open Incr_dom.Vdom
 
-  val text     : State.t -> string    Id.t -> Attr.t list -> Node.t
-
-  val textarea : State.t -> string    Id.t -> Attr.t list -> Node.t
-
-  val checkbox : State.t -> bool      Id.t -> Attr.t list -> Node.t
-
+  val text : State.t -> string Id.t -> Attr.t list -> Node.t
+  val textarea : State.t -> string Id.t -> Attr.t list -> Node.t
+  val checkbox : State.t -> bool Id.t -> Attr.t list -> Node.t
   val radio_button : State.t -> 'a Variant_id.t -> Attr.t list -> ('a * Node.t) list
 
   (** Dropdown for all initially provided values optionally sorted using the provided
       compare function.  *)
   val dropdown
-    : State.t
+    :  State.t
     -> 'a Variant_id.t
     -> Attr.t list
     -> ?compare:('a -> 'a -> int)
     -> ('a -> string)
     -> Node.t
-
 end
