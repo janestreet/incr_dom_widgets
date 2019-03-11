@@ -18,7 +18,6 @@ depends: [
   "incr_select"
   "incremental"
   "ppx_jane"
-  "record_builder"
   "splay_tree"
   "virtual_dom"
   "dune"            {build & >= "1.5.1"}
