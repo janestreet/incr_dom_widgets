@@ -1127,7 +1127,7 @@ let%test_module _ =
     module Bar = struct
       type t =
         { a : int
-        ; b : string sexp_option
+        ; b : string option [@sexp.option]
         ; c : t option
         }
       [@@deriving fields, sexp_of, compare]

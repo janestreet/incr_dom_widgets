@@ -181,8 +181,8 @@ module Primitives : sig
   (** See documentation for [record]. *)
   val sexp_option_field
     :  'a t
-    -> ('record, 'a sexp_option) Field.t
-    -> ('record, 'a sexp_option) Record_field.t
+    -> ('record, 'a option) Field.t
+    -> ('record, 'a option) Record_field.t
 
   (** See documentation for [record]. *)
   val ( <.*> )
