@@ -297,7 +297,6 @@ module T = struct
     end)
 end
 
-let all_ignore = T.all_unit
 let all = T.all
 let all_unit = T.all_unit
 let ignore_m = T.ignore_m
