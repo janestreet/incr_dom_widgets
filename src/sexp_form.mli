@@ -110,7 +110,7 @@ module Primitives : sig
     -> ?max_size:int
     -> ?add_and_remove_button_attrs:Incr_dom.Vdom.Attr.t list
     -> ?editor_message_attr:Incr_dom.Vdom.Attr.t
-    -> order:[`Ordered | `Unordered]
+    -> order:[ `Ordered | `Unordered ]
     -> 'a t
     -> 'a list t
 
@@ -395,7 +395,7 @@ end
     It's recommended to use `After for errors which are right next to the area where
     the user inputs the data, and `Before for errors in complicated types which
     comprise many input fields. *)
-val validate : where:[`Before | `After] -> 'a t -> f:('a -> unit Or_error.t) -> 'a t
+val validate : where:[ `Before | `After ] -> 'a t -> f:('a -> unit Or_error.t) -> 'a t
 
 (** Same as [validate], but more suited for validating properties which depend on
     external, changing state.
@@ -403,7 +403,7 @@ val validate : where:[`Before | `After] -> 'a t -> f:('a -> unit Or_error.t) -> 
     Note that an [Incr] can be converted to an [Interactive] using [Interactive.of_incr].
 *)
 val validate_interactive
-  :  where:[`Before | `After]
+  :  where:[ `Before | `After ]
   -> 'a t
   -> 'b Interactive.t
   -> f:('a -> 'b -> unit Or_error.t)
@@ -414,7 +414,7 @@ val validate_interactive
 
     [validate] is a wrapper around [handle_error].
 *)
-val handle_error : where:[`Before | `After] -> 'a Or_error.t t -> 'a t
+val handle_error : where:[ `Before | `After ] -> 'a Or_error.t t -> 'a t
 
 (** Verifies that the provided [form] can parse [value].
     Intended for expect tests. *)
@@ -423,7 +423,7 @@ val test
   -> value:'a
   -> sexp_of_t:('a -> Sexp.t)
   -> equal:('a -> 'a -> bool)
-  -> on_failure:[`Print | `Raise]
+  -> on_failure:[ `Print | `Raise ]
   -> unit
 
 (** For convenience -- it just calls [test] for each value. *)
@@ -432,7 +432,7 @@ val test_list
   -> values:'a list
   -> sexp_of_t:('a -> Sexp.t)
   -> equal:('a -> 'a -> bool)
-  -> on_failure:[`Print | `Raise]
+  -> on_failure:[ `Print | `Raise ]
   -> unit
 
 (** For convenience -- it just calls [test] for each value. *)
@@ -441,5 +441,5 @@ val test_sequence
   -> values:'a Sequence.t
   -> sexp_of_t:('a -> Sexp.t)
   -> equal:('a -> 'a -> bool)
-  -> on_failure:[`Print | `Raise]
+  -> on_failure:[ `Print | `Raise ]
   -> unit

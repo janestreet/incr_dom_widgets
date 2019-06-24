@@ -23,8 +23,7 @@ module Parse_state = struct
 
   let require_empty t =
     match t.default with
-    | None
-    | Some [] -> ()
+    | None | Some [] -> ()
     | Some sexps -> raise_s [%message "Expected ')' but found" (sexps : Sexp.t list)]
   ;;
 
@@ -38,8 +37,7 @@ module Parse_state = struct
     let default =
       match t.default with
       | None -> None
-      | Some (x :: xs)
-        when Sexp.equal x expected -> Some xs
+      | Some (x :: xs) when Sexp.equal x expected -> Some xs
       | Some (found :: _) ->
         raise_s [%message "Parse failure" (expected : Sexp.t) (found : Sexp.t)]
       | Some [] -> raise_s [%message "Unexpected ')'" (expected : Sexp.t)]
@@ -172,8 +170,7 @@ let handle_error_interactive where interactive =
   let interactive =
     Interactive.map_nodes_value_dependent interactive ~f:(fun value nodes ->
       match value with
-      | Error _
-      | Ok (Ok _) -> nodes
+      | Error _ | Ok (Ok _) -> nodes
       | Ok (Error err) ->
         let error_message_node = Node.text (Error.to_string_hum err) in
         let error_node = Node.span [ error_attr ] [ error_message_node ] in
@@ -212,8 +209,7 @@ module Case = struct
   type 'a sexp_form = 'a t
 
   type 'a t =
-    { name :
-        string
+    { name : string
     (* [has_been_applied] is used to determine whether the value should be wrapped in
        parentheses when converted to a sexp. For instance, [A] is converted as [A] but
        [B of int] is converted as [(B 123)]. *)
@@ -542,7 +538,7 @@ module Primitives = struct
       -> ?max_size:int
       -> ?add_and_remove_button_attrs:Attr.t list
       -> ?editor_message_attr:Attr.t
-      -> order:[`Ordered | `Unordered]
+      -> order:[ `Ordered | `Unordered ]
       -> 'a t
       -> 'a list t
   end = struct
@@ -733,8 +729,7 @@ module Primitives = struct
                   button_with_new_list
                     (State.add_at_button ~add_text ~t ~init_blank)
                     ~sep:(nodes (newline_nodes parse_state))
-                | `Unordered, _
-                | _, false -> return None
+                | `Unordered, _ | _, false -> return None
               and remove_button_new_list =
                 if deletion_enabled
                 then
@@ -750,7 +745,7 @@ module Primitives = struct
           in
           let%bind_open forms_with_buttons = Interactive.all forms_with_buttons
           and () =
-            if not (List.is_empty list) && adding_enabled
+            if (not (List.is_empty list)) && adding_enabled
             then nodes (newline_nodes parse_state)
             else return ()
           and last_add_button_new_list =
@@ -796,8 +791,8 @@ module Primitives = struct
       let parse_state =
         let open Sexp in
         Parse_state.map_default parse_state ~f:(function
-          | List [ Atom x; y ] :: z
-            when String.equal x field_name -> List [ Atom x; List [ y ] ] :: z
+          | List [ Atom x; y ] :: z when String.equal x field_name ->
+            List [ Atom x; List [ y ] ] :: z
           | sexps -> List [ Atom field_name; List [] ] :: sexps)
       in
       inner parse_state
@@ -919,7 +914,8 @@ module Primitives = struct
       let parse_state =
         Parse_state.transform_first_sexp parse_state ~f:(fun sexp ->
           let enumerated_match =
-            List.find options ~f:(fun (_, option) -> Sexp.equal sexp (sexp_of_t option))
+            List.find options ~f:(fun (_, option) ->
+              Sexp.equal sexp (sexp_of_t option))
           in
           let open Sexp in
           match enumerated_match with
