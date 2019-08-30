@@ -10,7 +10,7 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
-  "ocaml" {>= "4.07.0"}
+  "ocaml" {>= "4.08.0"}
   "async_js"
   "async_kernel"
   "incr_dom"
@@ -21,7 +21,7 @@ depends: [
   "splay_tree"
   "virtual_dom"
   "dune"            {build & >= "1.5.1"}
-  "js_of_ocaml"     {>= "3.2.1"}
+  "js_of_ocaml"     {>= "3.4.1"}
   "js_of_ocaml-ppx"
 ]
 synopsis: "Utilities for Incr_dom"
